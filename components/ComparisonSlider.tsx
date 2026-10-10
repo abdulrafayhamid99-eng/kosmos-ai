@@ -366,10 +366,51 @@ export default function ComparisonSlider({
   };
 
   const formatTime = (timeInSec: number) => {
-    const mins = Math.floor(timeInSec / 60);
-    const secs = Math.floor(timeInSec % 60);
+    const clamped = Math.max(0, timeInSec);
+    const mins = Math.floor(clamped / 60);
+    const secs = Math.floor(clamped % 60);
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
+
+  // Sync duration and position whenever isRenderPreview changes
+  useEffect(() => {
+    if (isRenderPreview) {
+      setDuration(5);
+      if (videoAfterRef.current && videoAfterRef.current.currentTime >= 5.0) {
+        videoAfterRef.current.currentTime = 0;
+      }
+      if (videoBeforeRef.current && videoBeforeRef.current.currentTime >= 5.0) {
+        videoBeforeRef.current.currentTime = 0;
+      }
+      setCurrentTime(0);
+    }
+  }, [isRenderPreview]);
+
+  // Native onTimeUpdate listener: Clamps playback strictly to 0:00 - 0:05 in preview mode
+  const handleTimeUpdate = (e: React.SyntheticEvent<HTMLVideoElement>) => {
+    const vid = e.currentTarget;
+    if (isRenderPreview && vid.currentTime >= 5.0) {
+      vid.currentTime = 0;
+      if (videoAfterRef.current) videoAfterRef.current.currentTime = 0;
+      if (videoBeforeRef.current) videoBeforeRef.current.currentTime = 0;
+      setCurrentTime(0);
+    } else {
+      setCurrentTime(vid.currentTime);
+    }
+  };
+
+  // Timeline scrubber seek handler
+  const handleSeekTimeline = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const targetVal = parseFloat(e.target.value);
+    const clamped = isRenderPreview ? Math.min(5, Math.max(0, targetVal)) : targetVal;
+    if (videoAfterRef.current) videoAfterRef.current.currentTime = clamped;
+    if (videoBeforeRef.current) videoBeforeRef.current.currentTime = clamped;
+    setCurrentTime(clamped);
+  };
+
+  // Timeline boundaries restricted to 5s in preview mode
+  const effectiveMaxDuration = isRenderPreview ? 5 : (duration > 0 ? duration : 5);
+  const effectiveCurrentTime = isRenderPreview ? Math.min(5, Math.max(0, currentTime)) : currentTime;
 
   // Active Cinema Camera Profile calculation
   const activeProfile =
@@ -473,6 +514,7 @@ export default function ComparisonSlider({
             onSeeking={handlePrimarySeeking}
             onSeeked={handlePrimarySeeked}
             onLoadedMetadata={handleLoadedMetadata}
+            onTimeUpdate={handleTimeUpdate}
             style={{
               filter: enhancedFilterStyle,
             }}
@@ -520,6 +562,7 @@ export default function ComparisonSlider({
               muted
               playsInline
               onLoadedMetadata={handleBeforeLoadedMetadata}
+              onTimeUpdate={handleTimeUpdate}
               style={{
                 filter: 'none',
               }}
@@ -549,82 +592,103 @@ export default function ComparisonSlider({
         </div>
 
         {/* Interactive Bottom Controls Overlay */}
-        <div className="absolute bottom-0 inset-x-0 z-20 p-3 bg-gradient-to-t from-black/95 via-black/60 to-transparent flex items-center justify-between text-white text-xs pointer-events-auto">
+        <div className="absolute bottom-0 inset-x-0 z-20 px-3 py-2.5 bg-gradient-to-t from-black/95 via-black/85 to-transparent flex flex-col gap-1.5 text-white text-xs pointer-events-auto">
           
-          <div className="flex items-center gap-2">
-            <button
-              onClick={togglePlay}
-              className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-white transition"
-              title={isPlaying ? "Pause" : "Play"}
-            >
-              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-white" />}
-            </button>
-
-            <button
-              onClick={toggleMute}
-              className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-white transition"
-              title={isMuted ? "Unmute" : "Mute"}
-            >
-              {isMuted ? <VolumeX className="w-4 h-4 text-slate-400" /> : <Volume2 className="w-4 h-4 text-cyan-400" />}
-            </button>
-
-            {/* Slow Motion Optical Flow Toggle */}
-            <button
-              onClick={toggleSpeed}
-              className="px-2 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-[11px] font-semibold text-slate-300 transition flex items-center gap-1"
-              title="Toggle slow-motion optical flow inspection"
-            >
-              <Gauge className="w-3 h-3 text-cyan-400" />
-              <span>{playbackSpeed}x Smooth</span>
-            </button>
-
-            <span className="text-[11px] font-mono text-slate-300 ml-1 hidden sm:inline">
-              {formatTime(currentTime)} / {formatTime(duration)}
+          {/* Timeline Scrubber & Timestamp Row (Restricted strictly to 5s in preview mode) */}
+          <div className="w-full flex items-center gap-2.5">
+            <input
+              type="range"
+              min={0}
+              max={effectiveMaxDuration}
+              step={0.05}
+              value={effectiveCurrentTime}
+              onChange={handleSeekTimeline}
+              className="w-full h-1.5 bg-slate-800 hover:h-2 rounded-lg appearance-none cursor-pointer accent-cyan-400 transition-all focus:outline-none"
+              title={isRenderPreview ? "5s Preview Snippet (0:00 - 0:05 Loop)" : "Seek Timeline"}
+            />
+            <span className="text-[11px] font-mono text-cyan-300 font-bold whitespace-nowrap bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700/80 shadow-sm">
+              {formatTime(effectiveCurrentTime)} / {formatTime(effectiveMaxDuration)}
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setSliderPosition(50)}
-              className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-[11px] text-slate-300 transition"
-              title="Reset divider to center"
-            >
-              <RefreshCcw className="w-3 h-3" />
-              <span>Center 50%</span>
-            </button>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={togglePlay}
+                className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-white transition"
+                title={isPlaying ? "Pause" : "Play"}
+              >
+                {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-white" />}
+              </button>
 
-            {/* Direct Export Clip Trigger */}
-            <button
-              onClick={handleInternalExport}
-              disabled={isDownloadingLocal}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-bold shadow-md transition disabled:opacity-75 ${
-                hasRenderedOutput
-                  ? 'bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 shadow-cyan-900/40'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
-              }`}
-              title={
-                hasRenderedOutput
-                  ? `Download processed ${isRenderPreview ? 'preview' : resolution} video`
-                  : 'Render video first to export processed AI clip'
-              }
-            >
-              <Download className={`w-3 h-3 ${hasRenderedOutput ? 'text-slate-950' : 'text-cyan-400'}`} />
-              <span>
-                {isDownloadingLocal
-                  ? 'Saving...'
-                  : hasRenderedOutput
-                  ? isRenderPreview
-                    ? 'Export Preview Clip'
-                    : `Export Clip (${outputFileSize || resolution})`
-                  : 'Export Clip'}
+              <button
+                onClick={toggleMute}
+                className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-white transition"
+                title={isMuted ? "Unmute" : "Mute"}
+              >
+                {isMuted ? <VolumeX className="w-4 h-4 text-slate-400" /> : <Volume2 className="w-4 h-4 text-cyan-400" />}
+              </button>
+
+              {/* Slow Motion Optical Flow Toggle */}
+              <button
+                onClick={toggleSpeed}
+                className="px-2 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-[11px] font-semibold text-slate-300 transition flex items-center gap-1"
+                title="Toggle slow-motion optical flow inspection"
+              >
+                <Gauge className="w-3 h-3 text-cyan-400" />
+                <span>{playbackSpeed}x Smooth</span>
+              </button>
+
+              {isRenderPreview && (
+                <span className="text-[10px] uppercase font-bold text-cyan-400 px-2 py-0.5 bg-cyan-950/80 border border-cyan-500/40 rounded-full hidden sm:inline-block">
+                  5s Snippet Loop
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSliderPosition(50)}
+                className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-[11px] text-slate-300 transition"
+                title="Reset divider to center"
+              >
+                <RefreshCcw className="w-3 h-3" />
+                <span>Center 50%</span>
+              </button>
+
+              {/* Direct Export Clip Trigger */}
+              <button
+                onClick={handleInternalExport}
+                disabled={isDownloadingLocal}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-bold shadow-md transition disabled:opacity-75 ${
+                  hasRenderedOutput
+                    ? 'bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 shadow-cyan-900/40'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                }`}
+                title={
+                  hasRenderedOutput
+                    ? `Download processed ${isRenderPreview ? 'preview' : resolution} video`
+                    : 'Render video first to export processed AI clip'
+                }
+              >
+                <Download className={`w-3 h-3 ${hasRenderedOutput ? 'text-slate-950' : 'text-cyan-400'}`} />
+                <span>
+                  {isDownloadingLocal
+                    ? 'Saving...'
+                    : hasRenderedOutput
+                    ? isRenderPreview
+                      ? 'Export 5s Preview'
+                      : `Export Clip (${outputFileSize || resolution})`
+                    : 'Export Clip'}
+                </span>
+              </button>
+
+              <span className="text-[11px] font-semibold text-cyan-400 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700 font-mono">
+                {Math.round(sliderPosition)}%
               </span>
-            </button>
+            </div>
 
-            <span className="text-[11px] font-semibold text-cyan-400 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700 font-mono">
-              {Math.round(sliderPosition)}%
-            </span>
           </div>
-
         </div>
 
       </div>
