@@ -6,6 +6,7 @@ export interface HistoryItem {
   resolution: string;
   fps: string;
   preset: string;
+  cameraProfile?: string;
   timestamp: string;
   processingTimeFormatted: string;
   videoUrl: string;

@@ -14,13 +14,84 @@ import {
   Download
 } from 'lucide-react';
 
+export interface CameraProfile {
+  id: string;
+  name: string;
+  sub: string;
+  badge: string;
+  filter: string;
+  colorHex: string;
+  accent: string;
+}
+
+export const CAMERA_PROFILES: CameraProfile[] = [
+  {
+    id: 'arri_alexa',
+    name: 'ARRI Alexa 35',
+    sub: 'LogC4 • Rich highlight roll-off & filmic warmth',
+    badge: 'LogC4 Cinema',
+    filter: 'sepia(0.08) contrast(1.14) saturate(1.15) brightness(1.02) hue-rotate(-2deg)',
+    colorHex: '#f59e0b',
+    accent: 'border-amber-500/50 bg-amber-950/20 text-amber-400',
+  },
+  {
+    id: 'red_vraptor',
+    name: 'RED V-Raptor 8K VV',
+    sub: 'High contrast & micro-texture detail',
+    badge: 'IPP2 RedColor4',
+    filter: 'contrast(1.26) saturate(1.24) brightness(0.98)',
+    colorHex: '#ef4444',
+    accent: 'border-rose-500/50 bg-rose-950/20 text-rose-400',
+  },
+  {
+    id: 'sony_venice',
+    name: 'Sony FX9 / Venice 2',
+    sub: 'S-Cinetone • Natural skin tones',
+    badge: 'S-Cinetone / Venice',
+    filter: 'contrast(1.10) saturate(1.14) brightness(1.04) hue-rotate(2deg)',
+    colorHex: '#3b82f6',
+    accent: 'border-blue-500/50 bg-blue-950/20 text-blue-400',
+  },
+  {
+    id: 'blackmagic_ursa',
+    name: 'Blackmagic URSA 12K',
+    sub: 'BMD Gen 5 • Organic film saturation',
+    badge: 'BMD Gen 5 Film',
+    filter: 'contrast(1.18) saturate(1.34) brightness(1.01)',
+    colorHex: '#f97316',
+    accent: 'border-orange-500/50 bg-orange-950/20 text-orange-400',
+  },
+  {
+    id: 'canon_c500',
+    name: 'Canon Cinema EOS C500',
+    sub: 'Canon Log 3 • Warm golden tones',
+    badge: 'Canon Log 3',
+    filter: 'sepia(0.14) contrast(1.14) saturate(1.20) brightness(1.03) hue-rotate(-4deg)',
+    colorHex: '#dc2626',
+    accent: 'border-red-500/50 bg-red-950/20 text-red-400',
+  },
+  {
+    id: 'native_clean',
+    name: 'Native Uncolored',
+    sub: 'Clean AI upscale without color science',
+    badge: 'Clean AI Neutral',
+    filter: 'contrast(1.18) saturate(1.20) brightness(1.02)',
+    colorHex: '#06b6d4',
+    accent: 'border-cyan-500/50 bg-cyan-950/20 text-cyan-400',
+  },
+];
+
 interface ComparisonSliderProps {
   originalVideoSrc?: string;
   enhancedVideoSrc?: string;
   presetName?: string;
   resolution?: string;
   fps?: string;
+  cameraProfile?: string;
   applyNeuralFilter?: boolean;
+  hasRenderedOutput?: boolean;
+  isRenderPreview?: boolean;
+  outputFileSize?: string;
   onExport?: () => void;
 }
 
@@ -30,11 +101,15 @@ export default function ComparisonSlider({
   presetName = "Studio 4K Remaster",
   resolution = "4K Ultra HD",
   fps = "60 FPS",
+  cameraProfile = "Native Uncolored",
   applyNeuralFilter = true,
+  hasRenderedOutput = false,
+  isRenderPreview = false,
+  outputFileSize,
   onExport,
 }: ComparisonSliderProps) {
   // Default verified sample video
-  const defaultSampleUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
+  const defaultSampleUrl = "https://raw.githubusercontent.com/intel-iot-devkit/sample-videos/master/person-bicycle-car-detection.mp4";
   const sourceA = originalVideoSrc || defaultSampleUrl;
   const sourceB = enhancedVideoSrc || originalVideoSrc || defaultSampleUrl;
 
@@ -95,6 +170,12 @@ export default function ComparisonSlider({
           secondary.currentTime = primary.currentTime;
         }
 
+        // 5-Second Preview Loop restriction: strictly loops 0:00 - 0:05
+        if (isRenderPreview && primary.currentTime >= 5.0) {
+          primary.currentTime = 0;
+          secondary.currentTime = 0;
+        }
+
         // State alignment
         if (!primary.paused && secondary.paused) {
           secondary.play().catch(() => {});
@@ -147,7 +228,7 @@ export default function ComparisonSlider({
 
   const handleLoadedMetadata = () => {
     if (videoAfterRef.current) {
-      setDuration(videoAfterRef.current.duration || 0);
+      setDuration(isRenderPreview ? 5 : (videoAfterRef.current.duration || 0));
       const w = videoAfterRef.current.videoWidth;
       const h = videoAfterRef.current.videoHeight;
       if (w && h) {
@@ -290,12 +371,17 @@ export default function ComparisonSlider({
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  // Enhanced video styling: Crisp super-resolution grading (contrast, vibrance, edge boost)
+  // Active Cinema Camera Profile calculation
+  const activeProfile =
+    CAMERA_PROFILES.find((p) => p.id === cameraProfile || p.name === cameraProfile) ||
+    CAMERA_PROFILES[5];
+
+  // Enhanced video styling: Crisp super-resolution grading combined with Cinema Camera Profile emulation
   const enhancedFilterStyle = isAiSharpenActive
-    ? sharpnessLevel === '8k'
-      ? 'contrast(1.26) saturate(1.30) brightness(1.05)'
-      : 'contrast(1.18) saturate(1.22) brightness(1.03)'
-    : 'none';
+    ? `${activeProfile.filter} ${
+        sharpnessLevel === '8k' ? 'contrast(1.08)' : ''
+      }`
+    : activeProfile.filter;
 
   return (
     <div className="w-full flex flex-col gap-3">
@@ -398,6 +484,20 @@ export default function ComparisonSlider({
             <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
             <span>KosMos AI Enhanced ({resolution} @ {fps})</span>
           </div>
+
+          {/* 5-Second Preview Loop Snippet Badge */}
+          {isRenderPreview && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none flex items-center gap-1.5 bg-gradient-to-r from-cyan-950/95 via-violet-950/95 to-cyan-950/95 backdrop-blur-md border border-cyan-400/80 px-3.5 py-1.5 rounded-full text-[11px] font-extrabold text-cyan-300 shadow-xl shadow-cyan-950/80 animate-pulse">
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              <span>5s Preview Snippet (0:00 - 0:05 Loop Active)</span>
+            </div>
+          )}
+
+          {/* Active Cinema Camera Profile Indicator on Player */}
+          <div className="absolute bottom-4 right-4 z-20 pointer-events-none flex items-center gap-1.5 bg-slate-950/85 backdrop-blur-md border border-slate-700/80 px-2.5 py-1 rounded-full text-[10px] font-semibold text-slate-300 shadow-lg">
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: activeProfile.colorHex }} />
+            <span>{activeProfile.name}</span>
+          </div>
         </div>
 
         {/* Layer 2: Original Video (Clipped Layer - 100% True 1:1 Pixel Fidelity, Zero Blur, Zero Artificial Filters) */}
@@ -497,11 +597,27 @@ export default function ComparisonSlider({
             <button
               onClick={handleInternalExport}
               disabled={isDownloadingLocal}
-              className="flex items-center gap-1 px-3 py-1 rounded-lg bg-gradient-to-r from-cyan-600 to-violet-600 hover:from-cyan-500 hover:to-violet-500 text-white text-[11px] font-bold shadow-md shadow-cyan-900/30 transition disabled:opacity-75"
-              title="Download enhanced high-resolution clip directly"
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-bold shadow-md transition disabled:opacity-75 ${
+                hasRenderedOutput
+                  ? 'bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 shadow-cyan-900/40'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+              }`}
+              title={
+                hasRenderedOutput
+                  ? `Download processed ${isRenderPreview ? 'preview' : resolution} video`
+                  : 'Render video first to export processed AI clip'
+              }
             >
-              <Download className="w-3 h-3" />
-              <span>{isDownloadingLocal ? 'Saving...' : 'Export Clip'}</span>
+              <Download className={`w-3 h-3 ${hasRenderedOutput ? 'text-slate-950' : 'text-cyan-400'}`} />
+              <span>
+                {isDownloadingLocal
+                  ? 'Saving...'
+                  : hasRenderedOutput
+                  ? isRenderPreview
+                    ? 'Export Preview Clip'
+                    : `Export Clip (${outputFileSize || resolution})`
+                  : 'Export Clip'}
+              </span>
             </button>
 
             <span className="text-[11px] font-semibold text-cyan-400 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700 font-mono">

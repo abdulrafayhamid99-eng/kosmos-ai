@@ -3,13 +3,38 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Film, Zap, Clock, CreditCard, Sparkles, PlusCircle } from 'lucide-react';
+import { Film, Zap, Clock, CreditCard, Sparkles, PlusCircle, Sun, Moon } from 'lucide-react';
 import RefillModal from './RefillModal';
 
 export default function Navbar() {
   const pathname = usePathname();
   const [credits, setCredits] = useState<number>(100);
   const [showRefillModal, setShowRefillModal] = useState<boolean>(false);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+
+  // Sync theme with localStorage
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('kosmos_theme') as 'dark' | 'light' | null;
+    const initialTheme = savedTheme || 'dark';
+    setTheme(initialTheme);
+    if (initialTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(nextTheme);
+    localStorage.setItem('kosmos_theme', nextTheme);
+    if (nextTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    window.dispatchEvent(new Event('kosmos_theme_changed'));
+  };
 
   // Sync credits with localStorage
   useEffect(() => {
@@ -90,6 +115,21 @@ export default function Navbar() {
 
           {/* User Credits & Refill Action */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Theme Toggle Button (Light / Dark Mode) */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
+              aria-label="Toggle Theme"
+              className="p-2 rounded-full border border-slate-700/80 bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white transition shadow-sm hover:scale-105 active:scale-95 flex items-center justify-center"
+            >
+              {theme === 'dark' ? (
+                <Sun className="w-4 h-4 text-amber-400" />
+              ) : (
+                <Moon className="w-4 h-4 text-cyan-500" />
+              )}
+            </button>
+
             {/* Credits Pill */}
             <div
               onClick={() => setShowRefillModal(true)}
