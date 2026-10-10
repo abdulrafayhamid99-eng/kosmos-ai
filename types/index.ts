@@ -11,6 +11,8 @@ export interface HistoryItem {
   processingTimeFormatted: string;
   videoUrl: string;
   originalVideoUrl?: string;
+  userId?: string;
+  userEmail?: string;
 }
 
 export interface FileMetadata {

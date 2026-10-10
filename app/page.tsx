@@ -6,6 +6,15 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import ComparisonSlider, { CAMERA_PROFILES } from '@/components/ComparisonSlider';
 import RefillModal from '@/components/RefillModal';
+import GoogleAuthModal from '@/components/GoogleAuthModal';
+import { useSession } from 'next-auth/react';
+import {
+  getUserCredits,
+  setUserCredits,
+  deductUserCredits,
+  hasGuestUsedPreview,
+  markGuestPreviewUsed,
+} from '@/lib/credits';
 import {
   UploadCloud,
   Sparkles,
@@ -53,6 +62,16 @@ export default function Home() {
   const [progressPercent, setProgressPercent] = useState<number>(0);
   const [currentStepText, setCurrentStepText] = useState<string>('');
   const [estimatedSecondsRemaining, setEstimatedSecondsRemaining] = useState<number>(5);
+
+  // Authentication & Session
+  const { data: session, status } = useSession();
+  const isAuthenticated = status === 'authenticated';
+  const currentUserId = session?.user?.email ? `usr_${session.user.email}` : ((session?.user as any)?.id || null);
+
+  const [showGoogleAuthModal, setShowGoogleAuthModal] = useState<boolean>(false);
+  const [authModalSubtitle, setAuthModalSubtitle] = useState<string>(
+    'Sign in with Google to claim 100 free render credits & save your project history'
+  );
 
   // Rendered Output State
   const [processedResult, setProcessedResult] = useState<{
@@ -145,21 +164,20 @@ export default function Home() {
   ];
 
 
-  // Sync user credits from local storage
+  // Sync user credits from local storage / user ID
   useEffect(() => {
     const updateCredits = () => {
-      const stored = localStorage.getItem('kosmos_credits');
-      if (stored !== null) {
-        setCredits(parseInt(stored, 10));
-      } else {
-        localStorage.setItem('kosmos_credits', '100');
-        setCredits(100);
-      }
+      const userCreds = getUserCredits(currentUserId);
+      setCredits(userCreds);
     };
     updateCredits();
     window.addEventListener('kosmos_credits_changed', updateCredits);
-    return () => window.removeEventListener('kosmos_credits_changed', updateCredits);
-  }, []);
+    window.addEventListener('storage', updateCredits);
+    return () => {
+      window.removeEventListener('kosmos_credits_changed', updateCredits);
+      window.removeEventListener('storage', updateCredits);
+    };
+  }, [currentUserId]);
 
   // Format seconds to mm:ss
   const formatDuration = (seconds: number) => {
@@ -259,8 +277,29 @@ export default function Home() {
       return;
     }
 
+    // Access Control & Credit Protection for Guests
+    if (!isAuthenticated) {
+      if (!isPreview) {
+        // Protected Action: Full video render requires Google sign-in
+        setAuthModalSubtitle(
+          'Sign in with Google to claim 100 free render credits & save your project history'
+        );
+        setShowGoogleAuthModal(true);
+        return;
+      } else {
+        // 5-Second Sample Preview: allow exactly once for free guests
+        if (hasGuestUsedPreview()) {
+          setAuthModalSubtitle(
+            'Sign in with Google to claim 100 free render credits & save your project history'
+          );
+          setShowGoogleAuthModal(true);
+          return;
+        }
+      }
+    }
+
     const cost = isPreview ? 10 : 25;
-    if (credits < cost) {
+    if (isAuthenticated && credits < cost) {
       setShowRefillModal(true);
       return;
     }
@@ -309,11 +348,13 @@ export default function Home() {
 
       const data = await response.json();
 
-      // Deduct credits
-      const updatedCredits = Math.max(0, credits - cost);
-      localStorage.setItem('kosmos_credits', updatedCredits.toString());
-      window.dispatchEvent(new Event('kosmos_credits_changed'));
-      setCredits(updatedCredits);
+      // Deduct credits if authenticated, or record guest preview usage
+      if (isAuthenticated) {
+        const remaining = deductUserCredits(cost, currentUserId);
+        setCredits(remaining);
+      } else if (isPreview) {
+        markGuestPreviewUsed();
+      }
 
       // Finish progress bar
       setProgressPercent(100);
@@ -345,7 +386,7 @@ export default function Home() {
 
       setProcessedResult(resultPayload);
 
-      // Save to local history
+      // Save to local history with user ID link
       try {
         const storedHistory = localStorage.getItem('kosmos_video_history');
         const historyList: HistoryItem[] = storedHistory ? JSON.parse(storedHistory) : [];
@@ -362,6 +403,8 @@ export default function Home() {
           processingTimeFormatted: data.processingTimeFormatted || '1.82s',
           videoUrl: outputVideoUrl,
           originalVideoUrl: filePreviewUrl || demoSamples[0].url,
+          userId: currentUserId || 'guest',
+          userEmail: session?.user?.email || undefined,
         };
         historyList.unshift(newHistoryItem);
         localStorage.setItem('kosmos_video_history', JSON.stringify(historyList.slice(0, 30)));
@@ -380,6 +423,15 @@ export default function Home() {
   };
 
   const handleDownloadOutput = async () => {
+    // Protected Action: Logged-out user trying to export triggers Google sign-in modal
+    if (!isAuthenticated) {
+      setAuthModalSubtitle(
+        'Sign in with Google to claim 100 free render credits & save your project history'
+      );
+      setShowGoogleAuthModal(true);
+      return;
+    }
+
     // If user has not rendered yet, show prompt modal to render full video or preview first
     if (!processedResult || !processedResult.videoUrl) {
       setShowRenderPromptModal(true);
@@ -1114,6 +1166,18 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* Google Authentication Modal */}
+      <GoogleAuthModal
+        isOpen={showGoogleAuthModal}
+        onClose={() => setShowGoogleAuthModal(false)}
+        title="Unlock Full AI Video Processing"
+        subtitle={authModalSubtitle}
+        onSuccess={() => {
+          const userCreds = getUserCredits(currentUserId);
+          setCredits(userCreds);
+        }}
+      />
     </div>
   );
 }

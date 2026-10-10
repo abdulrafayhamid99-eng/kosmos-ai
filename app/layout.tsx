@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
+import AuthProvider from "@/components/AuthProvider";
 
 export const viewport: Viewport = {
   themeColor: "#020617",
@@ -29,9 +30,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark" dir="ltr">
+    <html lang="en" className="dark" dir="ltr" suppressHydrationWarning>
       <body className="antialiased bg-slate-950 text-slate-100 min-h-screen selection:bg-cyan-500/30 selection:text-cyan-200">
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );
