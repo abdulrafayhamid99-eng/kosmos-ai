@@ -11,8 +11,7 @@ import {
   RefreshCcw,
   Zap,
   Gauge,
-  Download,
-  Layers
+  Download
 } from 'lucide-react';
 
 interface ComparisonSliderProps {
@@ -49,10 +48,36 @@ export default function ComparisonSlider({
   const [isAiSharpenActive, setIsAiSharpenActive] = useState<boolean>(true);
   const [sharpnessLevel, setSharpnessLevel] = useState<'4k' | '8k'>('4k');
   const [isDownloadingLocal, setIsDownloadingLocal] = useState<boolean>(false);
+  const [videoAspectRatio, setVideoAspectRatio] = useState<string | null>(null);
+  const [containerWidth, setContainerWidth] = useState<number>(0);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoBeforeRef = useRef<HTMLVideoElement | null>(null);
   const videoAfterRef = useRef<HTMLVideoElement | null>(null);
+
+  // ResizeObserver to track container width for perfect pixel alignment
+  useEffect(() => {
+    const updateSize = () => {
+      if (containerRef.current) {
+        setContainerWidth(containerRef.current.clientWidth);
+      }
+    };
+
+    updateSize();
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
+      resizeObserver = new ResizeObserver(() => updateSize());
+      resizeObserver.observe(containerRef.current);
+    } else {
+      window.addEventListener('resize', updateSize);
+    }
+
+    return () => {
+      if (resizeObserver) resizeObserver.disconnect();
+      window.removeEventListener('resize', updateSize);
+    };
+  }, []);
 
   // 1. Strict Frame-by-Frame Synchronization Loop via requestAnimationFrame
   useEffect(() => {
@@ -62,12 +87,11 @@ export default function ComparisonSlider({
       const secondary = videoBeforeRef.current;
 
       if (primary && secondary) {
-        // Keep current time indicator updated
         setCurrentTime(primary.currentTime);
 
         // Strict drift correction
         const drift = Math.abs(primary.currentTime - secondary.currentTime);
-        if (drift > 0.04) {
+        if (drift > 0.03) {
           secondary.currentTime = primary.currentTime;
         }
 
@@ -124,6 +148,21 @@ export default function ComparisonSlider({
   const handleLoadedMetadata = () => {
     if (videoAfterRef.current) {
       setDuration(videoAfterRef.current.duration || 0);
+      const w = videoAfterRef.current.videoWidth;
+      const h = videoAfterRef.current.videoHeight;
+      if (w && h) {
+        setVideoAspectRatio(`${w} / ${h}`);
+      }
+    }
+  };
+
+  const handleBeforeLoadedMetadata = () => {
+    if (videoBeforeRef.current && !videoAspectRatio) {
+      const w = videoBeforeRef.current.videoWidth;
+      const h = videoBeforeRef.current.videoHeight;
+      if (w && h) {
+        setVideoAspectRatio(`${w} / ${h}`);
+      }
     }
   };
 
@@ -208,8 +247,8 @@ export default function ComparisonSlider({
       videoAfterRef.current.currentTime = 0;
       videoBeforeRef.current.playbackRate = playbackSpeed;
       videoAfterRef.current.playbackRate = playbackSpeed;
-      videoAfterRef.current.play().catch(() => {});
       videoBeforeRef.current.play().catch(() => {});
+      videoAfterRef.current.play().catch(() => {});
       setIsPlaying(true);
     }
   }, [sourceA, sourceB, playbackSpeed]);
@@ -251,14 +290,12 @@ export default function ComparisonSlider({
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  // Visual filter configurations for unmistakably distinct side-by-side comparison
+  // Enhanced video styling: Crisp super-resolution grading (contrast, vibrance, edge boost)
   const enhancedFilterStyle = isAiSharpenActive
     ? sharpnessLevel === '8k'
-      ? 'contrast(1.35) saturate(1.42) brightness(1.07) drop-shadow(0 0 1px rgba(6,182,212,0.8))'
-      : 'contrast(1.28) saturate(1.35) brightness(1.05) drop-shadow(0 0 1px rgba(6,182,212,0.6))'
-    : 'contrast(1.10) saturate(1.12)';
-
-  const rawInputFilterStyle = 'blur(2.4px) contrast(0.85) saturate(0.76) brightness(0.93)';
+      ? 'contrast(1.26) saturate(1.30) brightness(1.05)'
+      : 'contrast(1.18) saturate(1.22) brightness(1.03)'
+    : 'none';
 
   return (
     <div className="w-full flex flex-col gap-3">
@@ -325,15 +362,19 @@ export default function ComparisonSlider({
         </div>
       </div>
 
-      {/* Main Interactive Split Container */}
+      {/* Main Interactive Split Container (Dynamically matches video aspect ratio with object-contain & black backdrop) */}
       <div
         ref={containerRef}
         onMouseDown={handleMouseDown}
         onTouchStart={() => setIsDragging(true)}
-        className="relative w-full aspect-video rounded-2xl overflow-hidden bg-black select-none border border-slate-800 shadow-2xl cursor-ew-resize cosmic-border-glow"
+        style={{
+          aspectRatio: videoAspectRatio || '16 / 9',
+          maxHeight: 'min(72vh, 660px)',
+        }}
+        className="relative w-full mx-auto rounded-2xl overflow-hidden bg-black select-none border border-slate-800 shadow-2xl cursor-ew-resize cosmic-border-glow flex items-center justify-center"
       >
-        {/* Layer 1: Enhanced Video (Full Base Layer with Razor Sharp 4K/8K HDR Grading) */}
-        <div className="absolute inset-0 w-full h-full">
+        {/* Layer 1: Enhanced Video (Full Base Layer with object-contain) */}
+        <div className="absolute inset-0 w-full h-full flex items-center justify-center bg-black">
           <video
             ref={videoAfterRef}
             src={sourceB}
@@ -348,21 +389,9 @@ export default function ComparisonSlider({
             onLoadedMetadata={handleLoadedMetadata}
             style={{
               filter: enhancedFilterStyle,
-              imageRendering: '-webkit-optimize-contrast' as any,
             }}
-            className="w-full h-full object-cover transition-[filter] duration-150"
+            className="w-full h-full object-contain transition-[filter] duration-150"
           />
-
-          {/* Micro-contrast & Specular Clarity Accent Overlay */}
-          {isAiSharpenActive && (
-            <div
-              className="absolute inset-0 pointer-events-none opacity-30 mix-blend-overlay"
-              style={{
-                backgroundImage:
-                  'radial-gradient(circle at 50% 50%, rgba(6,182,212,0.15) 0%, transparent 80%)',
-              }}
-            />
-          )}
 
           {/* Enhanced Quality Badge (Top Right) */}
           <div className="absolute top-4 right-4 z-20 pointer-events-none flex items-center gap-1.5 bg-cyan-950/90 backdrop-blur-md border border-cyan-400/60 px-3 py-1.5 rounded-full text-[11px] font-bold text-cyan-200 shadow-xl shadow-cyan-950/90">
@@ -371,16 +400,16 @@ export default function ComparisonSlider({
           </div>
         </div>
 
-        {/* Layer 2: Original Video (Clipped Layer with Authentic Compressed/Soft Filter) */}
+        {/* Layer 2: Original Video (Clipped Layer - 100% True 1:1 Pixel Fidelity, Zero Blur, Zero Artificial Filters) */}
         <div
-          className="absolute inset-0 h-full overflow-hidden pointer-events-none"
+          className="absolute inset-0 h-full overflow-hidden pointer-events-none bg-black"
           style={{ width: `${sliderPosition}%` }}
         >
           <div
-            className="absolute top-0 left-0 h-full"
+            className="absolute top-0 left-0 h-full flex items-center justify-center bg-black"
             style={{
-              width: containerRef.current ? `${containerRef.current.clientWidth}px` : '100%',
-              minWidth: '100%',
+              width: containerWidth > 0 ? `${containerWidth}px` : (containerRef.current ? `${containerRef.current.clientWidth}px` : '100%'),
+              minWidth: containerWidth > 0 ? `${containerWidth}px` : (containerRef.current ? `${containerRef.current.clientWidth}px` : '100%'),
             }}
           >
             <video
@@ -390,17 +419,18 @@ export default function ComparisonSlider({
               loop
               muted
               playsInline
+              onLoadedMetadata={handleBeforeLoadedMetadata}
               style={{
-                filter: rawInputFilterStyle,
+                filter: 'none',
               }}
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain"
             />
           </div>
 
           {/* Raw Input Badge (Top Left) */}
           <div className="absolute top-4 left-4 z-20 pointer-events-none flex items-center gap-1.5 bg-slate-950/90 backdrop-blur-md border border-slate-700/80 px-3 py-1.5 rounded-full text-[11px] font-bold text-slate-300 shadow-xl">
             <span className="w-2 h-2 rounded-full bg-slate-400" />
-            <span>Original (Raw Input • 24 FPS)</span>
+            <span>Original (Raw Input • 1:1)</span>
           </div>
         </div>
 
@@ -486,7 +516,7 @@ export default function ComparisonSlider({
       {/* Helper beneath slider */}
       <div className="flex items-center justify-between text-[11px] text-slate-500 px-1">
         <span>👈 Drag left for AI Super-Resolution ({sharpnessLevel.toUpperCase()} Clarity Active)</span>
-        <span>Drag right for Raw Input comparison 👉</span>
+        <span>Drag right for Raw Input (1:1 Natural Pixels) 👉</span>
       </div>
     </div>
   );
