@@ -13,7 +13,6 @@ import {
   Gauge,
   Download
 } from 'lucide-react';
-import { downloadEnhancedVideo } from '@/lib/videoExport';
 
 export interface CameraProfile {
   id: string;
@@ -351,17 +350,33 @@ export default function ComparisonSlider({
     }
 
     setIsDownloadingLocal(true);
+    const filename = `KosMos_Enhanced_${resolution.replace(/\s+/g, '_')}_${fps.replace(/\s+/g, '_')}.mp4`;
+
     try {
-      await downloadEnhancedVideo({
-        videoUrl: sourceB,
-        filename: `KosMos_Enhanced_${resolution.replace(/\s+/g, '_')}_${fps.replace(/\s+/g, '_')}.mp4`,
-        filterCss: activeProfile?.filter,
-      });
-    } catch (err) {
+      // 1. Direct blob fetch
+      const response = await fetch(sourceB, { mode: 'cors' });
+      if (response.ok) {
+        const blob = await response.blob();
+        if (blob && blob.size > 1024) {
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 3000);
+          return;
+        }
+      }
+      throw new Error('Direct fetch failed');
+    } catch {
+      // 2. Direct anchor fallback
       const a = document.createElement('a');
       a.href = sourceB;
-      a.download = `KosMos_Enhanced_Clip.mp4`;
+      a.download = filename;
       a.target = '_blank';
+      a.rel = 'noopener noreferrer';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
