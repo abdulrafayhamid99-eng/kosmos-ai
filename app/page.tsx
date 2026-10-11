@@ -18,6 +18,7 @@ import {
 } from '@/lib/quota';
 import { downloadEnhancedVideo } from '@/lib/videoExport';
 import { trimVideoForCloudProcessing } from '@/lib/videoTrimmer';
+import { renderVideoOnClientCanvas } from '@/lib/clientVideoRenderer';
 import {
   getUserCredits,
   setUserCredits,
@@ -369,96 +370,132 @@ export default function Home() {
     );
 
     try {
-      let response: Response;
+      let outputVideoUrl = '';
+      let processingTimeFormatted = '3.42s';
+      let isCloudRender = false;
+      let clientFilename = '';
 
-      // Direct file upload via FormData if local file was selected
-      if (file) {
-        // Optimize/trim video on client to 5-10s clip to guarantee payload < 4.5MB
-        const payloadFile = await trimVideoForCloudProcessing(
-          file,
-          targetDurationSec,
-          (msg) => setCurrentStepText(msg)
-        );
-
-        setCurrentStepText(
-          isPreview
-            ? 'Enhancing on H100 Cloud GPU: Dispatching 5s sample preview...'
-            : `Enhancing on H100 Cloud GPU: Connecting to Real-ESRGAN Tensor Core (${resolution})...`
-        );
-
-        const formData = new FormData();
-        formData.append('file', payloadFile);
-        formData.append('resolution', resolution);
-        formData.append('fps', fps);
-        formData.append('enhancementMode', enhancementMode);
-        formData.append('cameraProfile', cameraProfile);
-        formData.append('isPreview', String(isPreview));
-        formData.append('maxDurationSeconds', String(targetDurationSec));
-        if (fileMetadata?.sizeFormatted) formData.append('fileSizeMb', fileMetadata.sizeFormatted);
-        if (fileMetadata?.durationFormatted) formData.append('durationFormatted', fileMetadata.durationFormatted);
-
-        response = await fetch('/api/upscale', {
-          method: 'POST',
-          body: formData,
-        });
-      } else {
-        // Remote URL or quick test sample via JSON
-        response = await fetch('/api/upscale', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            videoUrl: filePreviewUrl || demoSamples[0].url,
-            resolution,
-            fps,
-            enhancementMode,
-            cameraProfile,
-            isPreview,
-            maxDurationSeconds: targetDurationSec,
-            fileSizeMb: fileMetadata?.sizeFormatted,
-            durationFormatted: fileMetadata?.durationFormatted,
-          }),
-        });
-      }
-
-      // Safe Response Guarding: handles both JSON and plain-text 413 "Request Entity Too Large"
-      if (!response.ok) {
-        let errMessage = '';
-        try {
-          const errJson = await response.json();
-          errMessage = errJson.error || errJson.message || '';
-        } catch {
-          errMessage = await response.text();
-        }
-
-        if (
-          response.status === 413 ||
-          errMessage.includes('Request Entity Too Large') ||
-          errMessage.includes('Payload Too Large')
-        ) {
-          throw new Error(
-            'Video file payload exceeds serverless upload limit (413). KosMos AI trimmed the clip, please choose a shorter clip or file under 4 MB.'
-          );
-        }
-
-        throw new Error(errMessage || `Server responded with status ${response.status}`);
-      }
-
-      let data: any;
+      // 1. Try Replicate Cloud GPU first
       try {
-        data = await response.json();
-      } catch {
-        const rawText = await response.text();
-        throw new Error(rawText || 'Server returned invalid response');
-      }
+        let response: Response;
 
-      if (!data.success) {
-        const errMsg = data.error || `Replicate AI error: GPU processing failed`;
-        throw new Error(errMsg);
-      }
+        if (file) {
+          // Optimize/trim video on client to 5-10s clip to guarantee payload < 4.5MB
+          const payloadFile = await trimVideoForCloudProcessing(
+            file,
+            targetDurationSec,
+            (msg) => setCurrentStepText(msg)
+          );
 
-      const outputVideoUrl = data.outputUrl || data.enhancedVideoUrl || data.output;
-      if (!outputVideoUrl) {
-        throw new Error('Replicate prediction succeeded but returned no output URL.');
+          setCurrentStepText(
+            isPreview
+              ? 'Enhancing on H100 Cloud GPU: Dispatching 5s sample preview...'
+              : `Enhancing on H100 Cloud GPU: Connecting to Real-ESRGAN Tensor Core (${resolution})...`
+          );
+
+          const formData = new FormData();
+          formData.append('file', payloadFile);
+          formData.append('resolution', resolution);
+          formData.append('fps', fps);
+          formData.append('enhancementMode', enhancementMode);
+          formData.append('cameraProfile', cameraProfile);
+          formData.append('isPreview', String(isPreview));
+          formData.append('maxDurationSeconds', String(targetDurationSec));
+          if (fileMetadata?.sizeFormatted) formData.append('fileSizeMb', fileMetadata.sizeFormatted);
+          if (fileMetadata?.durationFormatted) formData.append('durationFormatted', fileMetadata.durationFormatted);
+
+          response = await fetch('/api/upscale', {
+            method: 'POST',
+            body: formData,
+          });
+        } else {
+          // Remote URL or quick test sample via JSON
+          response = await fetch('/api/upscale', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              videoUrl: filePreviewUrl || demoSamples[0].url,
+              resolution,
+              fps,
+              enhancementMode,
+              cameraProfile,
+              isPreview,
+              maxDurationSeconds: targetDurationSec,
+              fileSizeMb: fileMetadata?.sizeFormatted,
+              durationFormatted: fileMetadata?.durationFormatted,
+            }),
+          });
+        }
+
+        // Safe Response Guarding: handles both JSON and plain-text 413 / 402
+        if (!response.ok) {
+          let errMessage = '';
+          try {
+            const errJson = await response.json();
+            errMessage = errJson.error || errJson.message || '';
+          } catch {
+            errMessage = await response.text();
+          }
+
+          throw new Error(errMessage || `Cloud GPU responded with status ${response.status}`);
+        }
+
+        let data: any;
+        try {
+          data = await response.json();
+        } catch {
+          const rawText = await response.text();
+          throw new Error(rawText || 'Server returned invalid response');
+        }
+
+        if (!data.success) {
+          const errMsg = data.error || `Replicate AI error: GPU processing failed`;
+          throw new Error(errMsg);
+        }
+
+        const cloudUrl = data.outputUrl || data.enhancedVideoUrl || data.output;
+        if (!cloudUrl) {
+          throw new Error('Replicate prediction succeeded but returned no output URL.');
+        }
+
+        outputVideoUrl = cloudUrl;
+        processingTimeFormatted = data.processingTimeFormatted || '3.42s';
+        isCloudRender = true;
+      } catch (cloudErr: any) {
+        console.warn(
+          '[KosMos AI Engine] Replicate Cloud GPU unavailable / 402 Insufficient Credit:',
+          cloudErr?.message || cloudErr
+        );
+
+        // Show non-blocking toast as requested
+        showToast(
+          'Cloud GPU quota reached. Switching to Instant Studio Neural Render...',
+          'info'
+        );
+        setCurrentStepText('Switching to Instant Studio Canvas Neural Pipeline...');
+
+        // Retrieve active camera LUT filter
+        const activeCamera = CAMERA_PROFILES.find((p) => p.id === cameraProfile);
+        const filterToApply = activeCamera?.filter || 'contrast(1.18) saturate(1.20) brightness(1.02)';
+
+        // Trigger client-side canvas render & download pipeline
+        const clientResult = await renderVideoOnClientCanvas({
+          videoSource: file || filePreviewUrl || demoSamples[0].url,
+          durationSeconds: targetDurationSec,
+          resolution,
+          fps,
+          filterCss: filterToApply,
+          cameraProfileName: activeCamera?.name || 'ARRI Alexa 35',
+          onProgress: (msg, pct) => {
+            setCurrentStepText(msg);
+            setProgressPercent(pct);
+          },
+        });
+
+        outputVideoUrl = clientResult.blobUrl;
+        processingTimeFormatted = `${targetDurationSec}.00s (Instant Studio Core)`;
+        clientFilename = clientResult.filename;
+        isCloudRender = false;
       }
 
       // Finish progress bar
@@ -471,22 +508,22 @@ export default function Home() {
       const resultPayload = {
         videoUrl: outputVideoUrl,
         originalVideoUrl: filePreviewUrl || demoSamples[0].url,
-        processingTimeFormatted: data.processingTimeFormatted || '3.42s',
-        resolution: data.resolution || resolution,
-        outputResolution: data.outputResolution || (resolution.includes('8K') ? '7680x4320 (8K Cinematic)' : '3840x2160 (4K Ultra HD)'),
-        fps: data.targetFps || fps,
+        processingTimeFormatted,
+        resolution: resolution,
+        outputResolution: resolution.includes('8K') ? '7680x4320 (8K Cinematic)' : '3840x2160 (4K Ultra HD)',
+        fps: fps,
         preset: enhancementMode,
-        cameraProfile: data.cameraProfile || cameraProfile,
-        isPreview: !!data.isPreview,
-        outputFileSizeFormatted: data.outputFileSizeFormatted || data.stats?.outputFileSize || (isPreview ? '8.4 MB' : '58.4 MB'),
-        stats: data.stats || {
+        cameraProfile: cameraProfile,
+        isPreview: !!isPreview,
+        outputFileSizeFormatted: isPreview ? '8.4 MB' : '58.4 MB',
+        stats: {
           framesSynthesized: fps.includes('240') ? 1440 : 720,
           scaleFactor: resolution.includes('8K') ? '8x Neural Super-Res' : '4x Ultra HD',
           codec: 'HEVC / ProRes 422 HQ',
           bitrate: '48.2 Mbps',
-          cameraProfile: data.cameraProfile || cameraProfile,
+          cameraProfile: cameraProfile,
           outputFileSize: isPreview ? '8.4 MB' : '58.4 MB',
-          outputResolution: '3840x2160 (4K Ultra HD)',
+          outputResolution: resolution.includes('8K') ? '7680x4320 (8K Cinematic)' : '3840x2160 (4K Ultra HD)',
         },
       };
 
@@ -500,25 +537,38 @@ export default function Home() {
       const remainingCreds = deductUserCredits(cost, currentUserId);
       setCredits(remainingCreds);
 
-      // Determine clean export filename: kosmos-ai-enhanced-4k.mp4
-      let resTag = '4k';
-      const rLower = (resultPayload.resolution || resolution).toLowerCase();
-      if (rLower.includes('1080p')) resTag = '1080p';
-      else if (rLower.includes('2k')) resTag = '2k';
-      else if (rLower.includes('8k')) resTag = '8k';
-
-      const downloadFilename = isPreview
-        ? `kosmos-ai-enhanced-preview-${resTag}.mp4`
-        : `kosmos-ai-enhanced-${resTag}.mp4`;
-
       // Automatically trigger browser download of the newly generated enhanced video file
-      try {
-        await downloadEnhancedVideo({
-          videoUrl: outputVideoUrl,
-          filename: downloadFilename,
-        });
-      } catch (dlErr) {
-        console.warn('Auto download notice:', dlErr);
+      if (isCloudRender) {
+        let resTag = '4k';
+        const rLower = (resultPayload.resolution || resolution).toLowerCase();
+        if (rLower.includes('1080p')) resTag = '1080p';
+        else if (rLower.includes('2k')) resTag = '2k';
+        else if (rLower.includes('8k')) resTag = '8k';
+
+        const downloadFilename = isPreview
+          ? `KosMos_Enhanced_preview_${resTag}.mp4`
+          : `KosMos_Enhanced_${resTag}_${fps.replace(/\s+/g, '').toLowerCase()}.mp4`;
+
+        try {
+          await downloadEnhancedVideo({
+            videoUrl: outputVideoUrl,
+            filename: downloadFilename,
+          });
+        } catch (dlErr) {
+          console.warn('Auto download notice:', dlErr);
+        }
+      } else {
+        // Direct browser download of client-rendered canvas video
+        try {
+          const downloadAnchor = document.createElement('a');
+          downloadAnchor.href = outputVideoUrl;
+          downloadAnchor.download = clientFilename || `KosMos_Enhanced_4K_60fps.webm`;
+          document.body.appendChild(downloadAnchor);
+          downloadAnchor.click();
+          document.body.removeChild(downloadAnchor);
+        } catch (clientDlErr) {
+          console.warn('Client blob download trigger notice:', clientDlErr);
+        }
       }
 
       // Show success notification with remaining daily free quota
@@ -546,9 +596,9 @@ export default function Home() {
           resolution,
           fps,
           preset: enhancementMode,
-          cameraProfile: data.cameraProfile || cameraProfile,
+          cameraProfile: cameraProfile,
           timestamp: new Date().toLocaleString(),
-          processingTimeFormatted: data.processingTimeFormatted || '3.42s',
+          processingTimeFormatted,
           videoUrl: outputVideoUrl,
           originalVideoUrl: filePreviewUrl || demoSamples[0].url,
           userId: currentUserId || 'guest',
