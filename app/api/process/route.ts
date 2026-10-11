@@ -64,6 +64,10 @@ export async function POST(req: Request) {
       durationFormatted = body.durationFormatted || '';
     }
 
+    // Daily Free Tier Rule: Every free clip is strictly capped at a maximum of 10 seconds of processing
+    const maxDurationSeconds = isPreview ? 5 : 10;
+    const cappedOutputDuration = isPreview ? '00:05' : '00:10';
+
     // Determine target sample fallback stream based on preset mode
     let defaultStream = SAMPLE_VIDEOS.cinematic;
     const modeLower = (enhancementMode || '').toLowerCase();
@@ -224,6 +228,8 @@ export async function POST(req: Request) {
       stats: {
         outputResolution: outputDimensions,
         outputFileSize: outputFileSizeFormatted,
+        outputDuration: cappedOutputDuration,
+        dailyFreeQuotaCap: '10s Free Quota Window',
         cameraProfile,
         framesSynthesized: fps.includes('240') ? 1440 : fps.includes('120') ? 720 : 360,
         scaleFactor: resolution.includes('8K') ? '8x Neural Super-Res' : resolution.includes('4K') ? '4x Ultra HD' : '2x QHD',

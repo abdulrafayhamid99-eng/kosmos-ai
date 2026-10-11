@@ -7,13 +7,18 @@ import Footer from '@/components/Footer';
 import ComparisonSlider, { CAMERA_PROFILES } from '@/components/ComparisonSlider';
 import RefillModal from '@/components/RefillModal';
 import GoogleAuthModal from '@/components/GoogleAuthModal';
-import { useSession } from 'next-auth/react';
+import QuotaExhaustedModal from '@/components/QuotaExhaustedModal';
+import { useUser, useClerk } from '@clerk/nextjs';
+import {
+  getDailyQuota,
+  consumeFreeClip,
+  DailyQuotaInfo,
+  MAX_CLIP_DURATION_SECONDS,
+} from '@/lib/quota';
 import {
   getUserCredits,
   setUserCredits,
   deductUserCredits,
-  hasGuestUsedPreview,
-  markGuestPreviewUsed,
 } from '@/lib/credits';
 import {
   UploadCloud,
@@ -54,6 +59,16 @@ export default function Home() {
     'Cinematic Motion (60 FPS - 240 FPS Interpolation)'
   );
 
+  // Authentication & Daily Free Quota with Clerk
+  const { isSignedIn, user, isLoaded } = useUser();
+  const { openSignIn } = useClerk();
+  const currentUserId = user?.id || (user?.primaryEmailAddress?.emailAddress ? `usr_${user.primaryEmailAddress.emailAddress}` : null);
+
+  const [quota, setQuota] = useState<DailyQuotaInfo>(() =>
+    getDailyQuota(user?.id, user?.unsafeMetadata)
+  );
+  const [showQuotaModal, setShowQuotaModal] = useState<boolean>(false);
+
   // Credits & UI State
   const [credits, setCredits] = useState<number>(100);
   const [showRefillModal, setShowRefillModal] = useState<boolean>(false);
@@ -63,14 +78,9 @@ export default function Home() {
   const [currentStepText, setCurrentStepText] = useState<string>('');
   const [estimatedSecondsRemaining, setEstimatedSecondsRemaining] = useState<number>(5);
 
-  // Authentication & Session
-  const { data: session, status } = useSession();
-  const isAuthenticated = status === 'authenticated';
-  const currentUserId = session?.user?.email ? `usr_${session.user.email}` : ((session?.user as any)?.id || null);
-
   const [showGoogleAuthModal, setShowGoogleAuthModal] = useState<boolean>(false);
   const [authModalSubtitle, setAuthModalSubtitle] = useState<string>(
-    'Sign in with Google to claim 100 free render credits & save your project history'
+    'Sign in with Google to activate your 3 daily free AI clips & save project history'
   );
 
   // Rendered Output State
@@ -190,6 +200,22 @@ export default function Home() {
     };
   }, [currentUserId]);
 
+  // Sync 24-Hour Daily Free Quota with Clerk & LocalStorage
+  useEffect(() => {
+    const syncQuota = () => {
+      setQuota(getDailyQuota(user?.id, user?.unsafeMetadata));
+    };
+    syncQuota();
+    window.addEventListener('kosmos_quota_changed', syncQuota);
+    window.addEventListener('storage', syncQuota);
+    const interval = setInterval(syncQuota, 60000);
+    return () => {
+      window.removeEventListener('kosmos_quota_changed', syncQuota);
+      window.removeEventListener('storage', syncQuota);
+      clearInterval(interval);
+    };
+  }, [user]);
+
   // Format seconds to mm:ss
   const formatDuration = (seconds: number) => {
     if (isNaN(seconds) || seconds <= 0) return '00:00';
@@ -291,32 +317,25 @@ export default function Home() {
       return;
     }
 
-    // Access Control & Credit Protection for Guests
-    if (!isAuthenticated) {
-      if (!isPreview) {
-        // Protected Action: Full video render requires Google sign-in
-        setAuthModalSubtitle(
-          'Sign in with Google to claim 100 free render credits & save your project history'
-        );
-        setShowGoogleAuthModal(true);
-        return;
+    // 1. If user is not logged in: Prompt Google Sign-In when clicking preview or render
+    if (!isSignedIn) {
+      if (openSignIn) {
+        openSignIn();
       } else {
-        // 5-Second Sample Preview: allow exactly once for free guests
-        if (hasGuestUsedPreview()) {
-          setAuthModalSubtitle(
-            'Sign in with Google to claim 100 free render credits & save your project history'
-          );
-          setShowGoogleAuthModal(true);
-          return;
-        }
+        setShowGoogleAuthModal(true);
       }
+      return;
+    }
+
+    // 2. Daily Free Usage Limit Rule (24-Hour Rolling Window):
+    // Every logged-in user gets strictly 3 Free Clips every 24 hours.
+    const currentQuota = getDailyQuota(user?.id, user?.unsafeMetadata);
+    if (currentQuota.isExhausted) {
+      setShowQuotaModal(true);
+      return;
     }
 
     const cost = isPreview ? 10 : 25;
-    if (isAuthenticated && credits < cost) {
-      setShowRefillModal(true);
-      return;
-    }
 
     setIsProcessing(true);
     setRenderingMode(isPreview ? 'preview' : 'full');
@@ -324,7 +343,7 @@ export default function Home() {
     setCurrentStepText(
       isPreview
         ? 'Synthesizing 5-Second Neural Latent Sample (0:00 - 0:05)...'
-        : `Connecting to Replicate Real-ESRGAN Tensor Core (${resolution})...`
+        : `Connecting to Replicate Real-ESRGAN Tensor Core (${resolution}, max 10s)...`
     );
     setEstimatedSecondsRemaining(isPreview ? 4 : 8);
 
@@ -356,6 +375,7 @@ export default function Home() {
         formData.append('enhancementMode', enhancementMode);
         formData.append('cameraProfile', cameraProfile);
         formData.append('isPreview', String(isPreview));
+        formData.append('maxDurationSeconds', String(MAX_CLIP_DURATION_SECONDS));
         if (fileMetadata?.sizeFormatted) formData.append('fileSizeMb', fileMetadata.sizeFormatted);
         if (fileMetadata?.durationFormatted) formData.append('durationFormatted', fileMetadata.durationFormatted);
 
@@ -375,6 +395,7 @@ export default function Home() {
             enhancementMode,
             cameraProfile,
             isPreview,
+            maxDurationSeconds: MAX_CLIP_DURATION_SECONDS,
             fileSizeMb: fileMetadata?.sizeFormatted,
             durationFormatted: fileMetadata?.durationFormatted,
           }),
@@ -383,13 +404,13 @@ export default function Home() {
 
       const data = await response.json();
 
-      // Deduct credits if authenticated, or record guest preview usage
-      if (isAuthenticated) {
-        const remaining = deductUserCredits(cost, currentUserId);
-        setCredits(remaining);
-      } else if (isPreview) {
-        markGuestPreviewUsed();
-      }
+      // Decrement daily quota balance & persist in Clerk user metadata + storage
+      const updatedQuota = consumeFreeClip(user?.id, user);
+      setQuota(updatedQuota);
+
+      // Deduct internal credits for display
+      const remainingCreds = deductUserCredits(cost, currentUserId);
+      setCredits(remainingCreds);
 
       // Finish progress bar
       setProgressPercent(100);
@@ -429,8 +450,8 @@ export default function Home() {
       } else {
         showToast(
           isPreview
-            ? '5-Second AI Sample Preview successfully rendered!'
-            : `Full Video Rendered in ${resolution}!`,
+            ? `5-Second AI Sample rendered! (${updatedQuota.clipsRemaining}/3 free clips left today)`
+            : `Clip Rendered in ${resolution} (max 10s)! (${updatedQuota.clipsRemaining}/3 free clips left today)`,
           'success'
         );
       }
@@ -443,7 +464,7 @@ export default function Home() {
           id: `kosmos-${Date.now()}`,
           filename: fileMetadata?.name || 'Enhanced_Clip.mp4',
           fileSizeFormatted: resultPayload.outputFileSizeFormatted,
-          originalDuration: isPreview ? '00:05' : (fileMetadata?.durationFormatted || '00:12'),
+          originalDuration: isPreview ? '00:05' : '00:10',
           resolution,
           fps,
           preset: enhancementMode,
@@ -453,7 +474,7 @@ export default function Home() {
           videoUrl: outputVideoUrl,
           originalVideoUrl: filePreviewUrl || demoSamples[0].url,
           userId: currentUserId || 'guest',
-          userEmail: session?.user?.email || undefined,
+          userEmail: user?.primaryEmailAddress?.emailAddress || undefined,
         };
         historyList.unshift(newHistoryItem);
         localStorage.setItem('kosmos_video_history', JSON.stringify(historyList.slice(0, 30)));
@@ -912,19 +933,53 @@ export default function Home() {
             {/* Launch Action Buttons */}
             <div className="p-6 rounded-3xl bg-gradient-to-r from-slate-900 via-slate-900/90 to-cyan-950/40 border border-slate-800 space-y-4">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400">Required Credits:</span>
+                <span className="text-slate-400">Daily Free Quota:</span>
                 <span className="font-bold text-white flex items-center gap-1.5">
-                  <Zap className="w-3.5 h-3.5 text-cyan-400" />
-                  25 Credits for Full Video (10 for Preview)
+                  <span className={`w-2 h-2 rounded-full ${quota.clipsRemaining > 0 ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-rose-400 animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.8)]'}`} />
+                  <span className={quota.clipsRemaining > 0 ? 'text-cyan-300 font-bold' : 'text-rose-400 font-bold'}>
+                    {quota.clipsRemaining}/3 Free Clips Remaining (Max 10s each)
+                  </span>
                 </span>
               </div>
+
+              {/* Quota Exhausted Warning Banner when 3 of 3 are used */}
+              {isSignedIn && quota.isExhausted && (
+                <div
+                  onClick={() => setShowQuotaModal(true)}
+                  className="p-3.5 rounded-2xl bg-rose-950/50 border border-rose-500/40 flex items-center justify-between gap-3 text-xs cursor-pointer hover:bg-rose-950/70 transition shadow-inner group"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <AlertTriangle className="w-4 h-4 text-rose-400 flex-shrink-0 animate-pulse" />
+                    <p className="text-rose-200 leading-snug">
+                      <strong>Daily Free Limit Reached:</strong> You have used your 3 free clips (10s each) for today. Resets in {quota.resetsInFormatted} or upgrade to continue.
+                    </p>
+                  </div>
+                  <span className="text-cyan-300 group-hover:text-cyan-200 underline font-bold whitespace-nowrap text-[11px] flex-shrink-0">
+                    Upgrade / Details →
+                  </span>
+                </div>
+              )}
 
               <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   type="button"
-                  onClick={() => handleEnhanceVideo(true)}
-                  disabled={isProcessing}
-                  className="flex-1 py-3.5 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-slate-200 text-xs font-bold transition flex items-center justify-center gap-2 border border-slate-700 shadow-sm"
+                  onClick={() => {
+                    if (!isSignedIn) {
+                      openSignIn ? openSignIn() : setShowGoogleAuthModal(true);
+                      return;
+                    }
+                    if (quota.isExhausted) {
+                      setShowQuotaModal(true);
+                      return;
+                    }
+                    handleEnhanceVideo(true);
+                  }}
+                  disabled={isProcessing || (Boolean(isSignedIn) && quota.isExhausted)}
+                  className={`flex-1 py-3.5 px-4 rounded-2xl text-xs font-bold transition flex items-center justify-center gap-2 border shadow-sm ${
+                    isSignedIn && quota.isExhausted
+                      ? 'bg-slate-900/80 border-slate-800 text-slate-500 cursor-not-allowed opacity-50'
+                      : 'bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-slate-200 border-slate-700'
+                  }`}
                 >
                   {renderingMode === 'preview' ? (
                     <>
@@ -941,19 +996,33 @@ export default function Home() {
 
                 <button
                   type="button"
-                  onClick={() => handleEnhanceVideo(false)}
-                  disabled={isProcessing}
-                  className="flex-1 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-cyan-500 via-violet-600 to-emerald-500 hover:opacity-95 disabled:opacity-60 text-white text-xs font-extrabold transition flex items-center justify-center gap-2 shadow-xl shadow-cyan-500/20 active:scale-[0.99]"
+                  onClick={() => {
+                    if (!isSignedIn) {
+                      openSignIn ? openSignIn() : setShowGoogleAuthModal(true);
+                      return;
+                    }
+                    if (quota.isExhausted) {
+                      setShowQuotaModal(true);
+                      return;
+                    }
+                    handleEnhanceVideo(false);
+                  }}
+                  disabled={isProcessing || (Boolean(isSignedIn) && quota.isExhausted)}
+                  className={`flex-1 py-3.5 px-4 rounded-2xl text-xs font-extrabold transition flex items-center justify-center gap-2 shadow-xl ${
+                    isSignedIn && quota.isExhausted
+                      ? 'bg-slate-800 border border-slate-700 text-slate-500 cursor-not-allowed opacity-50 shadow-none'
+                      : 'bg-gradient-to-r from-cyan-500 via-violet-600 to-emerald-500 hover:opacity-95 disabled:opacity-60 text-white shadow-cyan-500/20 active:scale-[0.99]'
+                  }`}
                 >
                   {renderingMode === 'full' ? (
                     <>
                       <RefreshCw className="w-4 h-4 text-white animate-spin" />
-                      <span>Rendering Full Video in {resolution}...</span>
+                      <span>Rendering Clip in {resolution}...</span>
                     </>
                   ) : (
                     <>
                       <Zap className="w-4 h-4 fill-white" />
-                      <span>Render Full Video in {resolution}</span>
+                      <span>Render Clip in {resolution} (Max 10s)</span>
                     </>
                   )}
                 </button>
@@ -1095,12 +1164,22 @@ export default function Home() {
                     <div className="pt-1">
                       <button
                         type="button"
-                        onClick={() => handleEnhanceVideo(false)}
-                        disabled={isProcessing}
-                        className="w-full py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-bold transition flex items-center justify-center gap-1.5 border border-cyan-500/30"
+                        onClick={() => {
+                          if (!isSignedIn) {
+                            openSignIn ? openSignIn() : setShowGoogleAuthModal(true);
+                            return;
+                          }
+                          if (quota.isExhausted) {
+                            setShowQuotaModal(true);
+                            return;
+                          }
+                          handleEnhanceVideo(false);
+                        }}
+                        disabled={isProcessing || (Boolean(isSignedIn) && quota.isExhausted)}
+                        className="w-full py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-bold transition flex items-center justify-center gap-1.5 border border-cyan-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Zap className="w-3.5 h-3.5 fill-cyan-400" />
-                        <span>Upgrade to Full Video Render in {resolution} (25 Credits)</span>
+                        <span>Render Full Video in {resolution} (Max 10s)</span>
                       </button>
                     </div>
                   )}
@@ -1202,26 +1281,42 @@ export default function Home() {
                 type="button"
                 onClick={() => {
                   setShowRenderPromptModal(false);
+                  if (!isSignedIn) {
+                    openSignIn ? openSignIn() : setShowGoogleAuthModal(true);
+                    return;
+                  }
+                  if (quota.isExhausted) {
+                    setShowQuotaModal(true);
+                    return;
+                  }
                   handleEnhanceVideo(false);
                 }}
-                disabled={isProcessing}
-                className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 via-violet-600 to-emerald-500 hover:opacity-95 text-white font-extrabold text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 active:scale-[0.99]"
+                disabled={isProcessing || (Boolean(isSignedIn) && quota.isExhausted)}
+                className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 via-violet-600 to-emerald-500 hover:opacity-95 text-white font-extrabold text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Zap className="w-4 h-4 fill-white" />
-                <span>Render Full Video in {resolution} (25 Credits)</span>
+                <span>Render Clip in {resolution} (Max 10s)</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => {
                   setShowRenderPromptModal(false);
+                  if (!isSignedIn) {
+                    openSignIn ? openSignIn() : setShowGoogleAuthModal(true);
+                    return;
+                  }
+                  if (quota.isExhausted) {
+                    setShowQuotaModal(true);
+                    return;
+                  }
                   handleEnhanceVideo(true);
                 }}
-                disabled={isProcessing}
-                className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition flex items-center justify-center gap-2 border border-slate-700"
+                disabled={isProcessing || (Boolean(isSignedIn) && quota.isExhausted)}
+                className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition flex items-center justify-center gap-2 border border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Sparkles className="w-4 h-4 text-cyan-400" />
-                <span>Render 5-Second Sample Preview (10 Credits)</span>
+                <span>Render 5-Second Sample Preview</span>
               </button>
             </div>
 
@@ -1235,6 +1330,13 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* Daily Free Quota Exhausted Modal (24-Hour Rolling Window) */}
+      <QuotaExhaustedModal
+        isOpen={showQuotaModal}
+        onClose={() => setShowQuotaModal(false)}
+        resetsInFormatted={quota.resetsInFormatted}
+      />
 
       {/* Google Authentication Modal */}
       <GoogleAuthModal

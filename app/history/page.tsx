@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useSession } from 'next-auth/react';
+import { useUser } from '@clerk/nextjs';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import ComparisonSlider from '@/components/ComparisonSlider';
@@ -26,9 +26,9 @@ import {
 import type { HistoryItem } from '@/types';
 
 export default function HistoryPage() {
-  const { data: session, status } = useSession();
-  const isAuthenticated = status === 'authenticated';
-  const currentUserId = session?.user?.email ? `usr_${session.user.email}` : ((session?.user as any)?.id || null);
+  const { isSignedIn, user } = useUser();
+  const isAuthenticated = !!isSignedIn;
+  const currentUserId = user?.id || (user?.primaryEmailAddress?.emailAddress ? `usr_${user.primaryEmailAddress.emailAddress}` : null);
 
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [filterMode, setFilterMode] = useState<'all' | 'mine'>('all');
@@ -37,7 +37,7 @@ export default function HistoryPage() {
 
   useEffect(() => {
     loadHistory();
-  }, [session]);
+  }, [user]);
 
   const loadHistory = () => {
     try {
@@ -126,13 +126,14 @@ export default function HistoryPage() {
   };
 
   // Filter items linked to current user
+  const userEmail = user?.primaryEmailAddress?.emailAddress;
   const displayedHistory = history.filter((item) => {
     if (filterMode === 'all') return true;
     if (filterMode === 'mine' && isAuthenticated) {
       return (
         item.userId === currentUserId ||
-        item.userEmail === session?.user?.email ||
-        item.userId === (session?.user as any)?.id
+        (userEmail && item.userEmail === userEmail) ||
+        item.userId === user?.id
       );
     }
     return true;
@@ -156,7 +157,7 @@ export default function HistoryPage() {
             <p className="text-xs text-slate-400 mt-1">
               {isAuthenticated ? (
                 <span>
-                  Synchronized with Google account: <strong className="text-cyan-300">{session?.user?.email}</strong>
+                  Synchronized with Google account: <strong className="text-cyan-300">{user?.primaryEmailAddress?.emailAddress}</strong>
                 </span>
               ) : (
                 <span>Locally persisted records of your processed neural upscales and frame interpolations.</span>
@@ -240,7 +241,7 @@ export default function HistoryPage() {
             >
               My Account Renders ({
                 history.filter(
-                  (i) => i.userId === currentUserId || i.userEmail === session?.user?.email
+                  (i) => i.userId === currentUserId || (userEmail && i.userEmail === userEmail)
                 ).length
               })
             </button>

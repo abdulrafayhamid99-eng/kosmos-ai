@@ -33,12 +33,7 @@ export const authOptions: NextAuthOptions = {
               `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(credentials.email)}`,
           };
         }
-        return {
-          id: 'usr_google_creator',
-          name: 'Alex Rivera',
-          email: 'alex.rivera@gmail.com',
-          image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&h=256&q=80',
-        };
+        return null;
       },
     }),
   ],
