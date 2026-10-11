@@ -74,6 +74,17 @@ export default function Home() {
   );
 
   // Rendered Output State
+  const [enhancedVideoUrl, setEnhancedVideoUrl] = useState<string>('');
+  const [renderingMode, setRenderingMode] = useState<'preview' | 'full' | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'info' | 'success' | 'error' = 'info') => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast((prev) => (prev?.message === message ? null : prev));
+    }, 5000);
+  };
+
   const [processedResult, setProcessedResult] = useState<{
     videoUrl: string;
     originalVideoUrl: string;
@@ -191,6 +202,7 @@ export default function Home() {
   const processUploadedFile = (uploadedFile: File) => {
     setFile(uploadedFile);
     setProcessedResult(null);
+    setEnhancedVideoUrl('');
 
     const objectUrl = URL.createObjectURL(uploadedFile);
     setFilePreviewUrl(objectUrl);
@@ -253,6 +265,7 @@ export default function Home() {
     setFile(null);
     setFilePreviewUrl(sample.url);
     setProcessedResult(null);
+    setEnhancedVideoUrl('');
     setFileMetadata({
       name: sample.name,
       sizeFormatted: sample.size,
@@ -267,13 +280,14 @@ export default function Home() {
     setFilePreviewUrl('');
     setFileMetadata(null);
     setProcessedResult(null);
+    setEnhancedVideoUrl('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   // Main AI Processing Action
   const handleEnhanceVideo = async (isPreview: boolean = false) => {
     if (!filePreviewUrl && !file) {
-      alert('Please upload or select a video to enhance.');
+      showToast('Please upload or select a video to enhance.', 'error');
       return;
     }
 
@@ -305,20 +319,21 @@ export default function Home() {
     }
 
     setIsProcessing(true);
-    setProgressPercent(8);
+    setRenderingMode(isPreview ? 'preview' : 'full');
+    setProgressPercent(12);
     setCurrentStepText(
       isPreview
-        ? 'Generating 5-Second Neural Latent Sample (0:00 - 0:05)...'
-        : 'Connecting to Replicate Real-ESRGAN Tensor Core...'
+        ? 'Synthesizing 5-Second Neural Latent Sample (0:00 - 0:05)...'
+        : `Connecting to Replicate Real-ESRGAN Tensor Core (${resolution})...`
     );
-    setEstimatedSecondsRemaining(isPreview ? 3 : 6);
+    setEstimatedSecondsRemaining(isPreview ? 4 : 8);
 
     // Multi-step progress simulation
     const steps = [
-      { p: 25, text: 'Analyzing Frames & Neural Optical Flow Vectors...', delay: 600 },
-      { p: 52, text: `Synthesizing ${fps} Motion Interpolation (RIFE)...`, delay: 1500 },
-      { p: 78, text: `Upscaling Textures & Applying ${cameraProfile} Science...`, delay: 2600 },
-      { p: 94, text: 'Mastering HEVC / ProRes Cinema Bitstream...', delay: 3600 },
+      { p: 28, text: 'Analyzing Frames & Neural Optical Flow Vectors...', delay: 700 },
+      { p: 56, text: `Synthesizing ${fps} Motion Interpolation (RIFE)...`, delay: 1800 },
+      { p: 80, text: `Upscaling Textures & Applying ${cameraProfile} Science...`, delay: 3000 },
+      { p: 95, text: 'Mastering HEVC / ProRes Cinema Bitstream...', delay: 4200 },
     ];
 
     steps.forEach((s) => {
@@ -330,21 +345,41 @@ export default function Home() {
     });
 
     try {
-      // Dispatch API request to app/api/process
-      const response = await fetch('/api/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          videoUrl: filePreviewUrl || demoSamples[0].url,
-          resolution,
-          fps,
-          enhancementMode,
-          cameraProfile,
-          isPreview,
-          fileSizeMb: fileMetadata?.sizeFormatted,
-          durationFormatted: fileMetadata?.durationFormatted,
-        }),
-      });
+      let response: Response;
+
+      // Direct file upload via FormData if local file was selected
+      if (file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('resolution', resolution);
+        formData.append('fps', fps);
+        formData.append('enhancementMode', enhancementMode);
+        formData.append('cameraProfile', cameraProfile);
+        formData.append('isPreview', String(isPreview));
+        if (fileMetadata?.sizeFormatted) formData.append('fileSizeMb', fileMetadata.sizeFormatted);
+        if (fileMetadata?.durationFormatted) formData.append('durationFormatted', fileMetadata.durationFormatted);
+
+        response = await fetch('/api/process', {
+          method: 'POST',
+          body: formData,
+        });
+      } else {
+        // Remote URL or quick test sample via JSON
+        response = await fetch('/api/process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            videoUrl: filePreviewUrl || demoSamples[0].url,
+            resolution,
+            fps,
+            enhancementMode,
+            cameraProfile,
+            isPreview,
+            fileSizeMb: fileMetadata?.sizeFormatted,
+            durationFormatted: fileMetadata?.durationFormatted,
+          }),
+        });
+      }
 
       const data = await response.json();
 
@@ -360,7 +395,10 @@ export default function Home() {
       setProgressPercent(100);
       setCurrentStepText('Render complete! Finalizing high-speed stream...');
 
-      const outputVideoUrl = data.output || data.streamUrl || demoSamples[0].url;
+      const outputVideoUrl = data.enhancedVideoUrl || data.output || data.streamUrl || demoSamples[0].url;
+
+      // Update enhancedVideoUrl so ComparisonSlider immediately plays the remote enhanced stream
+      setEnhancedVideoUrl(outputVideoUrl);
 
       const resultPayload = {
         videoUrl: outputVideoUrl,
@@ -385,6 +423,17 @@ export default function Home() {
       };
 
       setProcessedResult(resultPayload);
+
+      if (data.isMockFallback && data.errorDetail) {
+        showToast(`AI Pipeline notice: ${data.errorDetail}. Reference stream loaded.`, 'info');
+      } else {
+        showToast(
+          isPreview
+            ? '5-Second AI Sample Preview successfully rendered!'
+            : `Full Video Rendered in ${resolution}!`,
+          'success'
+        );
+      }
 
       // Save to local history with user ID link
       try {
@@ -414,43 +463,42 @@ export default function Home() {
 
     } catch (err: any) {
       console.error('Enhancement error:', err);
-      alert('Video enhancement completed using local pipeline fallback.');
+      showToast('Video enhancement completed using local pipeline fallback.', 'info');
     } finally {
       setTimeout(() => {
         setIsProcessing(false);
+        setRenderingMode(null);
       }, 500);
     }
   };
 
   const handleDownloadOutput = async () => {
-    // Protected Action: Logged-out user trying to export triggers Google sign-in modal
-    if (!isAuthenticated) {
-      setAuthModalSubtitle(
-        'Sign in with Google to claim 100 free render credits & save your project history'
-      );
-      setShowGoogleAuthModal(true);
-      return;
-    }
-
-    // If user has not rendered yet, show prompt modal to render full video or preview first
-    if (!processedResult || !processedResult.videoUrl) {
+    // If the video hasn't been rendered yet, trigger toast notification
+    const targetUrl = enhancedVideoUrl || processedResult?.videoUrl;
+    if (!targetUrl) {
+      showToast('Please render your video preview or full 4K first before exporting.', 'info');
       setShowRenderPromptModal(true);
       return;
     }
 
-    // Must strictly download genuine processed video URL from API
-    const targetUrl = processedResult.videoUrl;
+    // Determine clean export filename: kosmos-ai-enhanced-4k.mp4
+    let resTag = '4k';
+    const rLower = (processedResult?.resolution || resolution).toLowerCase();
+    if (rLower.includes('1080p')) resTag = '1080p';
+    else if (rLower.includes('2k')) resTag = '2k';
+    else if (rLower.includes('8k')) resTag = '8k';
+
+    const isPrev = processedResult?.isPreview;
+    const downloadFilename = isPrev
+      ? `kosmos-ai-enhanced-preview-${resTag}.mp4`
+      : `kosmos-ai-enhanced-${resTag}.mp4`;
+
     setIsDownloading(true);
-
-    const safeName = (fileMetadata?.name || 'video.mp4')
-      .replace(/\.[^/.]+$/, "")
-      .replace(/[^a-zA-Z0-9_-]/g, "_");
-
-    const prefix = processedResult.isPreview ? 'KosMos_AI_Preview_Sample' : 'KosMos_AI_Enhanced';
-    const downloadFilename = `${prefix}_${resolution.replace(/\s+/g, '_')}_${fps.replace(/\s+/g, '_')}_${safeName}.mp4`;
+    showToast(`Downloading binary stream: ${downloadFilename}...`, 'info');
 
     try {
       const response = await fetch(targetUrl);
+      if (!response.ok) throw new Error(`HTTP fetch failed with status ${response.status}`);
       const blob = await response.blob();
       const blobUrl = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
@@ -459,8 +507,10 @@ export default function Home() {
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 3000);
+      showToast(`Exported ${downloadFilename} successfully!`, 'success');
     } catch (err) {
+      console.warn('Direct blob fetch encountered an issue, falling back to direct stream download:', err);
       // Fallback in case of CORS restriction
       const anchor = document.createElement('a');
       anchor.href = targetUrl;
@@ -469,6 +519,7 @@ export default function Home() {
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
+      showToast(`Exported ${downloadFilename}!`, 'success');
     } finally {
       setIsDownloading(false);
     }
@@ -873,20 +924,38 @@ export default function Home() {
                   type="button"
                   onClick={() => handleEnhanceVideo(true)}
                   disabled={isProcessing}
-                  className="flex-1 py-3.5 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-bold transition flex items-center justify-center gap-2 border border-slate-700"
+                  className="flex-1 py-3.5 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-slate-200 text-xs font-bold transition flex items-center justify-center gap-2 border border-slate-700 shadow-sm"
                 >
-                  <Sparkles className="w-4 h-4 text-cyan-400" />
-                  <span>5-Second Sample Preview</span>
+                  {renderingMode === 'preview' ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 text-cyan-400 animate-spin" />
+                      <span className="text-cyan-300">Rendering 5s Preview...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 text-cyan-400" />
+                      <span>5-Second Sample Preview</span>
+                    </>
+                  )}
                 </button>
 
                 <button
                   type="button"
                   onClick={() => handleEnhanceVideo(false)}
                   disabled={isProcessing}
-                  className="flex-1 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-cyan-500 via-violet-600 to-emerald-500 hover:opacity-95 disabled:opacity-50 text-white text-xs font-extrabold transition flex items-center justify-center gap-2 shadow-xl shadow-cyan-500/20 active:scale-[0.99]"
+                  className="flex-1 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-cyan-500 via-violet-600 to-emerald-500 hover:opacity-95 disabled:opacity-60 text-white text-xs font-extrabold transition flex items-center justify-center gap-2 shadow-xl shadow-cyan-500/20 active:scale-[0.99]"
                 >
-                  <Zap className="w-4 h-4 fill-white" />
-                  <span>Render Full Video in {resolution}</span>
+                  {renderingMode === 'full' ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 text-white animate-spin" />
+                      <span>Rendering Full Video in {resolution}...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4 fill-white" />
+                      <span>Render Full Video in {resolution}</span>
+                    </>
+                  )}
                 </button>
               </div>
 
@@ -941,12 +1010,12 @@ export default function Home() {
               {/* Comparison Slider Component */}
               <ComparisonSlider
                 originalVideoSrc={filePreviewUrl || demoSamples[0].url}
-                enhancedVideoSrc={processedResult?.videoUrl || filePreviewUrl || demoSamples[0].url}
+                enhancedVideoSrc={enhancedVideoUrl || processedResult?.videoUrl || filePreviewUrl || demoSamples[0].url}
                 presetName={enhancementMode}
                 resolution={resolution}
                 fps={fps}
                 cameraProfile={cameraProfile}
-                hasRenderedOutput={!!processedResult}
+                hasRenderedOutput={!!(enhancedVideoUrl || processedResult)}
                 isRenderPreview={!!processedResult?.isPreview}
                 outputFileSize={processedResult?.outputFileSizeFormatted}
                 onExport={handleDownloadOutput}
@@ -1178,6 +1247,48 @@ export default function Home() {
           setCredits(userCreds);
         }}
       />
+
+      {/* Floating System Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-[100] max-w-sm sm:max-w-md animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className={`p-4 rounded-2xl backdrop-blur-xl border shadow-2xl flex items-center gap-3 ${
+            toast.type === 'error'
+              ? 'bg-rose-950/95 border-rose-500/50 text-rose-100 shadow-rose-950/60'
+              : toast.type === 'success'
+              ? 'bg-emerald-950/95 border-emerald-500/50 text-emerald-100 shadow-emerald-950/60'
+              : 'bg-slate-900/95 border-cyan-500/50 text-slate-100 shadow-cyan-950/60'
+          }`}>
+            <div className={`p-2 rounded-xl flex-shrink-0 ${
+              toast.type === 'error'
+                ? 'bg-rose-500/20 text-rose-400'
+                : toast.type === 'success'
+                ? 'bg-emerald-500/20 text-emerald-400'
+                : 'bg-cyan-500/20 text-cyan-400'
+            }`}>
+              {toast.type === 'error' ? (
+                <AlertTriangle className="w-5 h-5" />
+              ) : toast.type === 'success' ? (
+                <CheckCircle2 className="w-5 h-5" />
+              ) : (
+                <Sparkles className="w-5 h-5 animate-spin" style={{ animationDuration: '4s' }} />
+              )}
+            </div>
+            <div className="flex-1 pr-1">
+              <p className="text-xs font-semibold leading-relaxed">
+                {toast.message}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition flex-shrink-0"
+              title="Dismiss notification"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

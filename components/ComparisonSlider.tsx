@@ -321,22 +321,31 @@ export default function ComparisonSlider({
     };
   }, [isDragging, handleMouseMove, handleMouseUp, handleTouchMove]);
 
-  // Reset videos on source changes
+  // Reset and play videos immediately on source changes
   useEffect(() => {
-    if (videoBeforeRef.current && videoAfterRef.current) {
+    if (videoBeforeRef.current) {
+      videoBeforeRef.current.load();
       videoBeforeRef.current.currentTime = 0;
-      videoAfterRef.current.currentTime = 0;
       videoBeforeRef.current.playbackRate = playbackSpeed;
-      videoAfterRef.current.playbackRate = playbackSpeed;
       videoBeforeRef.current.play().catch(() => {});
-      videoAfterRef.current.play().catch(() => {});
-      setIsPlaying(true);
     }
+    if (videoAfterRef.current) {
+      videoAfterRef.current.load();
+      videoAfterRef.current.currentTime = 0;
+      videoAfterRef.current.playbackRate = playbackSpeed;
+      videoAfterRef.current.play().catch(() => {});
+    }
+    setIsPlaying(true);
   }, [sourceA, sourceB, playbackSpeed]);
 
   const handleInternalExport = async () => {
     if (onExport) {
       onExport();
+      return;
+    }
+
+    if (!hasRenderedOutput) {
+      alert('Please render your video preview or full 4K first before exporting.');
       return;
     }
 
