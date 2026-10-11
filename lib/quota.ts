@@ -106,14 +106,11 @@ export function getDailyQuota(userId?: string | null, clerkMetadata?: any): Dail
 }
 
 export function consumeFreeClip(userId: string | null | undefined, clerkUser?: any): DailyQuotaInfo {
-  if (!userId) {
-    return getDailyQuota(userId);
-  }
-
-  const current = getDailyQuota(userId, clerkUser?.unsafeMetadata);
+  const effectiveUserId = userId || clerkUser?.id || 'guest_user';
+  const current = getDailyQuota(effectiveUserId, clerkUser?.unsafeMetadata);
   const updatedUsed = Math.min(DAILY_FREE_CLIPS_LIMIT, current.freeClipsUsedToday + 1);
-  const now = current.lastResetTimestamp;
-  const storageKey = `kosmos_daily_quota_${userId}`;
+  const now = current.lastResetTimestamp || Date.now();
+  const storageKey = `kosmos_daily_quota_${effectiveUserId}`;
 
   // Persist locally
   if (typeof window !== 'undefined') {
@@ -125,7 +122,13 @@ export function consumeFreeClip(userId: string | null | undefined, clerkUser?: a
           lastResetTimestamp: now,
         })
       );
+      // Also update general key for instant UI responsiveness
+      localStorage.setItem('kosmos_daily_quota_active', JSON.stringify({
+        freeClipsUsedToday: updatedUsed,
+        lastResetTimestamp: now,
+      }));
       window.dispatchEvent(new Event('kosmos_quota_changed'));
+      window.dispatchEvent(new Event('storage'));
     } catch (e) {
       console.warn('Failed saving quota locally:', e);
     }
@@ -146,5 +149,6 @@ export function consumeFreeClip(userId: string | null | undefined, clerkUser?: a
       });
   }
 
-  return getDailyQuota(userId);
+  return getDailyQuota(effectiveUserId);
 }
+

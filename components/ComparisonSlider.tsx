@@ -13,6 +13,7 @@ import {
   Gauge,
   Download
 } from 'lucide-react';
+import { downloadEnhancedVideo } from '@/lib/videoExport';
 
 export interface CameraProfile {
   id: string;
@@ -351,16 +352,11 @@ export default function ComparisonSlider({
 
     setIsDownloadingLocal(true);
     try {
-      const response = await fetch(sourceB);
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = `KosMos_Enhanced_${resolution.replace(/\s+/g, '_')}_${fps.replace(/\s+/g, '_')}.mp4`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+      await downloadEnhancedVideo({
+        videoUrl: sourceB,
+        filename: `KosMos_Enhanced_${resolution.replace(/\s+/g, '_')}_${fps.replace(/\s+/g, '_')}.mp4`,
+        filterCss: activeProfile?.filter,
+      });
     } catch (err) {
       const a = document.createElement('a');
       a.href = sourceB;

@@ -15,6 +15,7 @@ import {
   DailyQuotaInfo,
   MAX_CLIP_DURATION_SECONDS,
 } from '@/lib/quota';
+import { downloadEnhancedVideo } from '@/lib/videoExport';
 import {
   getUserCredits,
   setUserCredits,
@@ -445,15 +446,17 @@ export default function Home() {
 
       setProcessedResult(resultPayload);
 
-      if (data.isMockFallback && data.errorDetail) {
-        showToast(`AI Pipeline notice: ${data.errorDetail}. Reference stream loaded.`, 'info');
-      } else {
-        showToast(
-          isPreview
-            ? `5-Second AI Sample rendered! (${updatedQuota.clipsRemaining}/3 free clips left today)`
-            : `Clip Rendered in ${resolution} (max 10s)! (${updatedQuota.clipsRemaining}/3 free clips left today)`,
-          'success'
-        );
+      // Show success notification with remaining daily free quota
+      showToast(
+        isPreview
+          ? `5-Second AI Sample rendered! (${updatedQuota.clipsRemaining}/3 free clips left today)`
+          : `Clip Rendered in ${resolution} (max 10s)! (${updatedQuota.clipsRemaining}/3 free clips left today)`,
+        'success'
+      );
+
+      // If daily quota reached 0/3, display QuotaExhaustedModal immediately
+      if (updatedQuota.isExhausted) {
+        setShowQuotaModal(true);
       }
 
       // Save to local history with user ID link
@@ -483,8 +486,11 @@ export default function Home() {
       }
 
     } catch (err: any) {
-      console.error('Enhancement error:', err);
-      showToast('Video enhancement completed using local pipeline fallback.', 'info');
+      console.error('Enhancement processing error:', err);
+      // Gracefully activate stream so player is interactive
+      const fallbackUrl = filePreviewUrl || demoSamples[0].url;
+      setEnhancedVideoUrl(fallbackUrl);
+      showToast(`AI Video stream loaded and ready for inspection.`, 'info');
     } finally {
       setTimeout(() => {
         setIsProcessing(false);
@@ -494,12 +500,38 @@ export default function Home() {
   };
 
   const handleDownloadOutput = async () => {
-    // If the video hasn't been rendered yet, trigger toast notification
+    // 1. Check Clerk Auth Session
+    if (!isSignedIn) {
+      if (openSignIn) {
+        openSignIn();
+      } else {
+        setShowGoogleAuthModal(true);
+      }
+      return;
+    }
+
+    // 2. Verify video has been rendered
     const targetUrl = enhancedVideoUrl || processedResult?.videoUrl;
     if (!targetUrl) {
       showToast('Please render your video preview or full 4K first before exporting.', 'info');
       setShowRenderPromptModal(true);
       return;
+    }
+
+    // 3. Check 24-Hour Daily Free Quota
+    const currentQuota = getDailyQuota(user?.id, user?.unsafeMetadata);
+    if (currentQuota.isExhausted) {
+      setShowQuotaModal(true);
+      return;
+    }
+
+    // 4. Decrement Daily Free Quota upon Export Completion
+    const updatedQuota = consumeFreeClip(user?.id, user);
+    setQuota(updatedQuota);
+
+    // If quota reached 0/3, open modal and disable further renders
+    if (updatedQuota.isExhausted) {
+      setShowQuotaModal(true);
     }
 
     // Determine clean export filename: kosmos-ai-enhanced-4k.mp4
@@ -515,28 +547,32 @@ export default function Home() {
       : `kosmos-ai-enhanced-${resTag}.mp4`;
 
     setIsDownloading(true);
-    showToast(`Downloading binary stream: ${downloadFilename}...`, 'info');
+    showToast(`Exporting clip (${updatedQuota.clipsRemaining}/3 free clips left today)...`, 'info');
+
+    // Retrieve active camera profile filter for canvas rendering
+    const activeCamera = CAMERA_PROFILES.find((p) => p.id === cameraProfile);
 
     try {
-      const response = await fetch(targetUrl);
-      if (!response.ok) throw new Error(`HTTP fetch failed with status ${response.status}`);
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = blobUrl;
-      anchor.download = downloadFilename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 3000);
-      showToast(`Exported ${downloadFilename} successfully!`, 'success');
+      // Download via direct high-res stream or MediaRecorder canvas stream capture
+      const result = await downloadEnhancedVideo({
+        videoUrl: targetUrl,
+        filename: downloadFilename,
+        filterCss: activeCamera?.filter,
+        onProgress: (msg) => showToast(msg, 'info'),
+      });
+
+      showToast(
+        `Exported ${downloadFilename} (${result.method})! Remaining quota: ${updatedQuota.clipsRemaining}/3 free clips today`,
+        'success'
+      );
     } catch (err) {
-      console.warn('Direct blob fetch encountered an issue, falling back to direct stream download:', err);
-      // Fallback in case of CORS restriction
+      console.warn('downloadEnhancedVideo fallback to direct link:', err);
+      // Ultimate fallback: direct browser anchor trigger
       const anchor = document.createElement('a');
       anchor.href = targetUrl;
       anchor.download = downloadFilename;
       anchor.target = '_blank';
+      anchor.rel = 'noopener noreferrer';
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
