@@ -25,6 +25,16 @@ export async function POST(req: Request) {
       const formData = await req.formData();
       const rawFile = (formData.get('file') as File) || (formData.get('video') as File);
       if (rawFile && typeof rawFile === 'object' && 'arrayBuffer' in rawFile && rawFile.size > 0) {
+        if (rawFile.size > 25 * 1024 * 1024) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Uploaded video file exceeds maximum processing size (25MB). Please upload a 5-10s clip or keep file under 4 MB.',
+              status: 'failed',
+            },
+            { status: 413 }
+          );
+        }
         videoFile = rawFile;
       }
       videoUrl = (formData.get('videoUrl') as string) || '';

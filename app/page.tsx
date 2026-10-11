@@ -17,6 +17,7 @@ import {
   MAX_CLIP_DURATION_SECONDS,
 } from '@/lib/quota';
 import { downloadEnhancedVideo } from '@/lib/videoExport';
+import { trimVideoForCloudProcessing } from '@/lib/videoTrimmer';
 import {
   getUserCredits,
   setUserCredits,
@@ -339,23 +340,24 @@ export default function Home() {
     }
 
     const cost = isPreview ? 10 : 25;
+    const targetDurationSec = isPreview ? 5 : MAX_CLIP_DURATION_SECONDS;
 
     setIsProcessing(true);
     setRenderingMode(isPreview ? 'preview' : 'full');
-    setProgressPercent(15);
+    setProgressPercent(12);
     setCurrentStepText(
       isPreview
-        ? 'Enhancing on H100 Cloud GPU: Dispatching 5s sample preview...'
-        : `Enhancing on H100 Cloud GPU: Connecting to Real-ESRGAN Tensor Core (${resolution})...`
+        ? 'Preparing 5s sample snippet for Cloud GPU (< 4MB)...'
+        : `Preparing ${targetDurationSec}s clip for Cloud GPU (< 4MB)...`
     );
     setEstimatedSecondsRemaining(isPreview ? 6 : 14);
 
     // Multi-step progress simulation with real GPU status
     const steps = [
-      { p: 32, text: 'Enhancing on H100 Cloud GPU: Running Real-ESRGAN super-resolution...', delay: 800 },
-      { p: 60, text: `Enhancing on H100 Cloud GPU: Synthesizing ${fps} motion vectors (RIFE)...`, delay: 2400 },
-      { p: 85, text: `Enhancing on H100 Cloud GPU: Applying ${cameraProfile} cinema color science...`, delay: 4200 },
-      { p: 95, text: 'Enhancing on H100 Cloud GPU: Finalizing broadcast master stream...', delay: 6500 },
+      { p: 32, text: 'Enhancing on H100 Cloud GPU: Running Real-ESRGAN super-resolution...', delay: 1800 },
+      { p: 60, text: `Enhancing on H100 Cloud GPU: Synthesizing ${fps} motion vectors (RIFE)...`, delay: 3600 },
+      { p: 85, text: `Enhancing on H100 Cloud GPU: Applying ${cameraProfile} cinema color science...`, delay: 5500 },
+      { p: 95, text: 'Enhancing on H100 Cloud GPU: Finalizing broadcast master stream...', delay: 7800 },
     ];
 
     const timeouts = steps.map((s) =>
@@ -371,14 +373,27 @@ export default function Home() {
 
       // Direct file upload via FormData if local file was selected
       if (file) {
+        // Optimize/trim video on client to 5-10s clip to guarantee payload < 4.5MB
+        const payloadFile = await trimVideoForCloudProcessing(
+          file,
+          targetDurationSec,
+          (msg) => setCurrentStepText(msg)
+        );
+
+        setCurrentStepText(
+          isPreview
+            ? 'Enhancing on H100 Cloud GPU: Dispatching 5s sample preview...'
+            : `Enhancing on H100 Cloud GPU: Connecting to Real-ESRGAN Tensor Core (${resolution})...`
+        );
+
         const formData = new FormData();
-        formData.append('file', file);
+        formData.append('file', payloadFile);
         formData.append('resolution', resolution);
         formData.append('fps', fps);
         formData.append('enhancementMode', enhancementMode);
         formData.append('cameraProfile', cameraProfile);
         formData.append('isPreview', String(isPreview));
-        formData.append('maxDurationSeconds', String(MAX_CLIP_DURATION_SECONDS));
+        formData.append('maxDurationSeconds', String(targetDurationSec));
         if (fileMetadata?.sizeFormatted) formData.append('fileSizeMb', fileMetadata.sizeFormatted);
         if (fileMetadata?.durationFormatted) formData.append('durationFormatted', fileMetadata.durationFormatted);
 
@@ -398,17 +413,46 @@ export default function Home() {
             enhancementMode,
             cameraProfile,
             isPreview,
-            maxDurationSeconds: MAX_CLIP_DURATION_SECONDS,
+            maxDurationSeconds: targetDurationSec,
             fileSizeMb: fileMetadata?.sizeFormatted,
             durationFormatted: fileMetadata?.durationFormatted,
           }),
         });
       }
 
-      const data = await response.json();
+      // Safe Response Guarding: handles both JSON and plain-text 413 "Request Entity Too Large"
+      if (!response.ok) {
+        let errMessage = '';
+        try {
+          const errJson = await response.json();
+          errMessage = errJson.error || errJson.message || '';
+        } catch {
+          errMessage = await response.text();
+        }
 
-      if (!response.ok || !data.success) {
-        const errMsg = data.error || `Replicate AI error (${response.status}): GPU processing failed`;
+        if (
+          response.status === 413 ||
+          errMessage.includes('Request Entity Too Large') ||
+          errMessage.includes('Payload Too Large')
+        ) {
+          throw new Error(
+            'Video file payload exceeds serverless upload limit (413). KosMos AI trimmed the clip, please choose a shorter clip or file under 4 MB.'
+          );
+        }
+
+        throw new Error(errMessage || `Server responded with status ${response.status}`);
+      }
+
+      let data: any;
+      try {
+        data = await response.json();
+      } catch {
+        const rawText = await response.text();
+        throw new Error(rawText || 'Server returned invalid response');
+      }
+
+      if (!data.success) {
+        const errMsg = data.error || `Replicate AI error: GPU processing failed`;
         throw new Error(errMsg);
       }
 
