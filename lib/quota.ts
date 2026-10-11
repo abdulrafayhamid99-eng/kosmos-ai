@@ -152,3 +152,6 @@ export function consumeFreeClip(userId: string | null | undefined, clerkUser?: a
   return getDailyQuota(effectiveUserId);
 }
 
+// Explicit decrementQuota export as required by the specification
+export const decrementQuota = consumeFreeClip;
+

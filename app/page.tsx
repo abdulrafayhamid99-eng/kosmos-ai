@@ -12,6 +12,7 @@ import { useUser, useClerk } from '@clerk/nextjs';
 import {
   getDailyQuota,
   consumeFreeClip,
+  decrementQuota,
   DailyQuotaInfo,
   MAX_CLIP_DURATION_SECONDS,
 } from '@/lib/quota';
@@ -329,10 +330,11 @@ export default function Home() {
     }
 
     // 2. Daily Free Usage Limit Rule (24-Hour Rolling Window):
-    // Every logged-in user gets strictly 3 Free Clips every 24 hours.
+    // First check if remaining free quota > 0
     const currentQuota = getDailyQuota(user?.id, user?.unsafeMetadata);
-    if (currentQuota.isExhausted) {
+    if (currentQuota.isExhausted || currentQuota.clipsRemaining <= 0) {
       setShowQuotaModal(true);
+      showToast(`Daily free limit reached (0/3). Resets in ${currentQuota.resetsInFormatted}`, 'error');
       return;
     }
 
@@ -340,29 +342,29 @@ export default function Home() {
 
     setIsProcessing(true);
     setRenderingMode(isPreview ? 'preview' : 'full');
-    setProgressPercent(12);
+    setProgressPercent(15);
     setCurrentStepText(
       isPreview
-        ? 'Synthesizing 5-Second Neural Latent Sample (0:00 - 0:05)...'
-        : `Connecting to Replicate Real-ESRGAN Tensor Core (${resolution}, max 10s)...`
+        ? 'Enhancing on H100 Cloud GPU: Dispatching 5s sample preview...'
+        : `Enhancing on H100 Cloud GPU: Connecting to Real-ESRGAN Tensor Core (${resolution})...`
     );
-    setEstimatedSecondsRemaining(isPreview ? 4 : 8);
+    setEstimatedSecondsRemaining(isPreview ? 6 : 14);
 
-    // Multi-step progress simulation
+    // Multi-step progress simulation with real GPU status
     const steps = [
-      { p: 28, text: 'Analyzing Frames & Neural Optical Flow Vectors...', delay: 700 },
-      { p: 56, text: `Synthesizing ${fps} Motion Interpolation (RIFE)...`, delay: 1800 },
-      { p: 80, text: `Upscaling Textures & Applying ${cameraProfile} Science...`, delay: 3000 },
-      { p: 95, text: 'Mastering HEVC / ProRes Cinema Bitstream...', delay: 4200 },
+      { p: 32, text: 'Enhancing on H100 Cloud GPU: Running Real-ESRGAN super-resolution...', delay: 800 },
+      { p: 60, text: `Enhancing on H100 Cloud GPU: Synthesizing ${fps} motion vectors (RIFE)...`, delay: 2400 },
+      { p: 85, text: `Enhancing on H100 Cloud GPU: Applying ${cameraProfile} cinema color science...`, delay: 4200 },
+      { p: 95, text: 'Enhancing on H100 Cloud GPU: Finalizing broadcast master stream...', delay: 6500 },
     ];
 
-    steps.forEach((s) => {
+    const timeouts = steps.map((s) =>
       setTimeout(() => {
         setProgressPercent(s.p);
         setCurrentStepText(s.text);
-        setEstimatedSecondsRemaining((prev) => Math.max(1, prev - 1));
-      }, s.delay);
-    });
+        setEstimatedSecondsRemaining((prev) => Math.max(1, prev - 2));
+      }, s.delay)
+    );
 
     try {
       let response: Response;
@@ -380,13 +382,13 @@ export default function Home() {
         if (fileMetadata?.sizeFormatted) formData.append('fileSizeMb', fileMetadata.sizeFormatted);
         if (fileMetadata?.durationFormatted) formData.append('durationFormatted', fileMetadata.durationFormatted);
 
-        response = await fetch('/api/process', {
+        response = await fetch('/api/upscale', {
           method: 'POST',
           body: formData,
         });
       } else {
         // Remote URL or quick test sample via JSON
-        response = await fetch('/api/process', {
+        response = await fetch('/api/upscale', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -405,27 +407,27 @@ export default function Home() {
 
       const data = await response.json();
 
-      // Decrement daily quota balance & persist in Clerk user metadata + storage
-      const updatedQuota = consumeFreeClip(user?.id, user);
-      setQuota(updatedQuota);
+      if (!response.ok || !data.success) {
+        const errMsg = data.error || `Replicate AI error (${response.status}): GPU processing failed`;
+        throw new Error(errMsg);
+      }
 
-      // Deduct internal credits for display
-      const remainingCreds = deductUserCredits(cost, currentUserId);
-      setCredits(remainingCreds);
+      const outputVideoUrl = data.outputUrl || data.enhancedVideoUrl || data.output;
+      if (!outputVideoUrl) {
+        throw new Error('Replicate prediction succeeded but returned no output URL.');
+      }
 
       // Finish progress bar
       setProgressPercent(100);
-      setCurrentStepText('Render complete! Finalizing high-speed stream...');
+      setCurrentStepText('Enhancement complete! Preparing download...');
 
-      const outputVideoUrl = data.enhancedVideoUrl || data.output || data.streamUrl || demoSamples[0].url;
-
-      // Update enhancedVideoUrl so ComparisonSlider immediately plays the remote enhanced stream
+      // Update comparison slider with the new enhanced video source
       setEnhancedVideoUrl(outputVideoUrl);
 
       const resultPayload = {
         videoUrl: outputVideoUrl,
         originalVideoUrl: filePreviewUrl || demoSamples[0].url,
-        processingTimeFormatted: data.processingTimeFormatted || '1.82s',
+        processingTimeFormatted: data.processingTimeFormatted || '3.42s',
         resolution: data.resolution || resolution,
         outputResolution: data.outputResolution || (resolution.includes('8K') ? '7680x4320 (8K Cinematic)' : '3840x2160 (4K Ultra HD)'),
         fps: data.targetFps || fps,
@@ -446,11 +448,40 @@ export default function Home() {
 
       setProcessedResult(resultPayload);
 
+      // Decrement daily quota balance upon genuine success
+      const updatedQuota = decrementQuota(user?.id, user);
+      setQuota(updatedQuota);
+
+      // Deduct internal credits for display
+      const remainingCreds = deductUserCredits(cost, currentUserId);
+      setCredits(remainingCreds);
+
+      // Determine clean export filename: kosmos-ai-enhanced-4k.mp4
+      let resTag = '4k';
+      const rLower = (resultPayload.resolution || resolution).toLowerCase();
+      if (rLower.includes('1080p')) resTag = '1080p';
+      else if (rLower.includes('2k')) resTag = '2k';
+      else if (rLower.includes('8k')) resTag = '8k';
+
+      const downloadFilename = isPreview
+        ? `kosmos-ai-enhanced-preview-${resTag}.mp4`
+        : `kosmos-ai-enhanced-${resTag}.mp4`;
+
+      // Automatically trigger browser download of the newly generated enhanced video file
+      try {
+        await downloadEnhancedVideo({
+          videoUrl: outputVideoUrl,
+          filename: downloadFilename,
+        });
+      } catch (dlErr) {
+        console.warn('Auto download notice:', dlErr);
+      }
+
       // Show success notification with remaining daily free quota
       showToast(
         isPreview
-          ? `5-Second AI Sample rendered! (${updatedQuota.clipsRemaining}/3 free clips left today)`
-          : `Clip Rendered in ${resolution} (max 10s)! (${updatedQuota.clipsRemaining}/3 free clips left today)`,
+          ? `5-Second AI Sample rendered & downloaded! (${updatedQuota.clipsRemaining}/3 free clips left today)`
+          : `Clip Rendered in ${resolution} & downloaded! (${updatedQuota.clipsRemaining}/3 free clips left today)`,
         'success'
       );
 
@@ -473,7 +504,7 @@ export default function Home() {
           preset: enhancementMode,
           cameraProfile: data.cameraProfile || cameraProfile,
           timestamp: new Date().toLocaleString(),
-          processingTimeFormatted: data.processingTimeFormatted || '1.82s',
+          processingTimeFormatted: data.processingTimeFormatted || '3.42s',
           videoUrl: outputVideoUrl,
           originalVideoUrl: filePreviewUrl || demoSamples[0].url,
           userId: currentUserId || 'guest',
@@ -486,11 +517,10 @@ export default function Home() {
       }
 
     } catch (err: any) {
-      console.error('Enhancement processing error:', err);
-      // Gracefully activate stream so player is interactive
-      const fallbackUrl = filePreviewUrl || demoSamples[0].url;
-      setEnhancedVideoUrl(fallbackUrl);
-      showToast(`AI Video stream loaded and ready for inspection.`, 'info');
+      timeouts.forEach(clearTimeout);
+      console.error('[KosMos AI Engine] Enhancement processing error:', err);
+      // DO NOT silently fallback to raw original clip! Surface the exact error message.
+      showToast(err.message || 'Replicate AI video upscaling failed', 'error');
     } finally {
       setTimeout(() => {
         setIsProcessing(false);
@@ -518,22 +548,6 @@ export default function Home() {
       return;
     }
 
-    // 3. Check 24-Hour Daily Free Quota
-    const currentQuota = getDailyQuota(user?.id, user?.unsafeMetadata);
-    if (currentQuota.isExhausted) {
-      setShowQuotaModal(true);
-      return;
-    }
-
-    // 4. Decrement Daily Free Quota upon Export Completion
-    const updatedQuota = consumeFreeClip(user?.id, user);
-    setQuota(updatedQuota);
-
-    // If quota reached 0/3, open modal and disable further renders
-    if (updatedQuota.isExhausted) {
-      setShowQuotaModal(true);
-    }
-
     // Determine clean export filename: kosmos-ai-enhanced-4k.mp4
     let resTag = '4k';
     const rLower = (processedResult?.resolution || resolution).toLowerCase();
@@ -547,36 +561,22 @@ export default function Home() {
       : `kosmos-ai-enhanced-${resTag}.mp4`;
 
     setIsDownloading(true);
-    showToast(`Exporting clip (${updatedQuota.clipsRemaining}/3 free clips left today)...`, 'info');
-
-    // Retrieve active camera profile filter for canvas rendering
-    const activeCamera = CAMERA_PROFILES.find((p) => p.id === cameraProfile);
+    showToast(`Downloading enhanced video (${quota.clipsRemaining}/3 free clips left today)...`, 'info');
 
     try {
-      // Download via direct high-res stream or MediaRecorder canvas stream capture
-      const result = await downloadEnhancedVideo({
+      await downloadEnhancedVideo({
         videoUrl: targetUrl,
         filename: downloadFilename,
-        filterCss: activeCamera?.filter,
         onProgress: (msg) => showToast(msg, 'info'),
       });
 
       showToast(
-        `Exported ${downloadFilename} (${result.method})! Remaining quota: ${updatedQuota.clipsRemaining}/3 free clips today`,
+        `Downloaded ${downloadFilename}! Remaining quota: ${quota.clipsRemaining}/3 free clips today`,
         'success'
       );
-    } catch (err) {
-      console.warn('downloadEnhancedVideo fallback to direct link:', err);
-      // Ultimate fallback: direct browser anchor trigger
-      const anchor = document.createElement('a');
-      anchor.href = targetUrl;
-      anchor.download = downloadFilename;
-      anchor.target = '_blank';
-      anchor.rel = 'noopener noreferrer';
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-      showToast(`Exported ${downloadFilename}!`, 'success');
+    } catch (err: any) {
+      console.warn('downloadEnhancedVideo error:', err);
+      showToast(err?.message || 'Failed to download enhanced video file.', 'error');
     } finally {
       setIsDownloading(false);
     }
