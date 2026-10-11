@@ -979,12 +979,15 @@ export default function Home() {
                 <label className="text-xs font-semibold text-slate-300 block mb-2">
                   Target Frame Rate (FPS Interpolation)
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2">
                   {[
+                    { val: '24 FPS', note: 'Film Cadence (24p)' },
                     { val: '30 FPS', note: 'Web & Mobile' },
+                    { val: '48 FPS', note: 'HFR Cinema Standard' },
                     { val: '60 FPS', note: 'Broadcast Standard' },
                     { val: '120 FPS', note: 'Cinematic Smooth' },
                     { val: '240 FPS', note: 'Extreme Slow-Mo' },
+                    { val: '480 FPS', note: 'Micro Slow-Mo' },
                   ].map((item) => {
                     const isSelected = fps === item.val;
                     return (
@@ -992,14 +995,14 @@ export default function Home() {
                         key={item.val}
                         type="button"
                         onClick={() => setFps(item.val)}
-                        className={`p-3 rounded-2xl border text-center transition ${
+                        className={`p-2.5 rounded-2xl border text-center transition ${
                           isSelected
                             ? 'border-violet-400 bg-violet-950/40 text-violet-300 font-bold shadow-lg shadow-violet-950/40'
                             : 'border-slate-800 bg-slate-900/60 hover:bg-slate-800 text-slate-300'
                         }`}
                       >
-                        <span className="block text-xs font-bold">{item.val}</span>
-                        <span className="block text-[10px] text-slate-500 mt-0.5">{item.note}</span>
+                        <span className="block text-xs font-bold whitespace-nowrap">{item.val}</span>
+                        <span className="block text-[9px] text-slate-500 mt-0.5 truncate">{item.note}</span>
                       </button>
                     );
                   })}

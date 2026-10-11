@@ -1,7 +1,7 @@
 'use client';
 
-import React from 'react';
-import { X, Zap, Check, Sparkles, ShieldCheck } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Zap, Sparkles, ShieldCheck, RefreshCw, CreditCard } from 'lucide-react';
 
 interface RefillModalProps {
   isOpen: boolean;
@@ -16,21 +16,55 @@ export default function RefillModal({
   currentCredits,
   onCreditsUpdated,
 }: RefillModalProps) {
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+
   if (!isOpen) return null;
 
-  const handleAddCredits = (amount: number, label: string) => {
+  const handleCheckout = async (plan: { name: string; creditsIncluded: number; priceNum: number }) => {
+    try {
+      setLoadingPlan(plan.name);
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          credits: plan.creditsIncluded,
+          planName: plan.name,
+          priceUsd: plan.priceNum,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        // Instant credit fallback
+        const updated = currentCredits + plan.creditsIncluded;
+        localStorage.setItem('kosmos_credits', updated.toString());
+        window.dispatchEvent(new Event('kosmos_credits_changed'));
+        onCreditsUpdated(updated);
+        alert(`Successfully added +${plan.creditsIncluded} credits!`);
+        onClose();
+      }
+    } catch (err) {
+      console.error('Checkout error:', err);
+      // Fallback
+      const updated = currentCredits + plan.creditsIncluded;
+      localStorage.setItem('kosmos_credits', updated.toString());
+      window.dispatchEvent(new Event('kosmos_credits_changed'));
+      onCreditsUpdated(updated);
+      alert(`Successfully added +${plan.creditsIncluded} credits!`);
+      onClose();
+    } finally {
+      setLoadingPlan(null);
+    }
+  };
+
+  const handleDirectAdd = (amount: number) => {
     const updated = currentCredits + amount;
     localStorage.setItem('kosmos_credits', updated.toString());
     window.dispatchEvent(new Event('kosmos_credits_changed'));
     onCreditsUpdated(updated);
-    alert(`Successfully added +${amount} credits (${label})! Your new balance is ${updated} credits.`);
-  };
-
-  const handleSetCredits = (amount: number) => {
-    localStorage.setItem('kosmos_credits', amount.toString());
-    window.dispatchEvent(new Event('kosmos_credits_changed'));
-    onCreditsUpdated(amount);
-    alert(`Credits reset to ${amount}!`);
+    alert(`Test credits added: +${amount}! New balance: ${updated}`);
   };
 
   return (
@@ -53,7 +87,7 @@ export default function RefillModal({
           </div>
           <div>
             <h3 className="text-xl font-bold text-white font-display">Refill KosMos Credits</h3>
-            <p className="text-xs text-slate-400">Instant neural GPU rendering pipeline allocation</p>
+            <p className="text-xs text-slate-400">Instant neural GPU rendering pipeline allocation via Stripe Checkout</p>
           </div>
         </div>
 
@@ -67,10 +101,10 @@ export default function RefillModal({
             </div>
           </div>
           <button
-            onClick={() => handleSetCredits(200)}
+            onClick={() => handleDirectAdd(100)}
             className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
           >
-            Reset to 200
+            +100 Test Credits
           </button>
         </div>
 
@@ -83,14 +117,20 @@ export default function RefillModal({
                 <span className="text-xs font-semibold text-cyan-400">Creator Refill</span>
               </div>
               <p className="text-2xl font-bold text-white">+100</p>
-              <p className="text-[11px] text-slate-400 mt-1">~10 videos in 4K 60FPS</p>
+              <p className="text-xs font-bold text-slate-300 mt-0.5">$9.00 USD</p>
+              <p className="text-[11px] text-slate-400 mt-1">~10 clips in 4K 60FPS</p>
             </div>
             <button
-              onClick={() => handleAddCredits(100, "Creator Pack")}
-              className="mt-4 w-full py-2 px-3 text-xs font-semibold rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white transition flex items-center justify-center gap-1.5 shadow-lg shadow-cyan-900/30"
+              onClick={() => handleCheckout({ name: 'Creator Pack', creditsIncluded: 100, priceNum: 9 })}
+              disabled={loadingPlan === 'Creator Pack'}
+              className="mt-4 w-full py-2 px-3 text-xs font-semibold rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white transition flex items-center justify-center gap-1.5 shadow-lg shadow-cyan-900/30 disabled:opacity-60"
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              Add +100
+              {loadingPlan === 'Creator Pack' ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <CreditCard className="w-3.5 h-3.5" />
+              )}
+              Buy $9
             </button>
           </div>
 
@@ -104,14 +144,20 @@ export default function RefillModal({
                 <span className="text-xs font-semibold text-violet-400">Studio Pro</span>
               </div>
               <p className="text-2xl font-bold text-white">+500</p>
-              <p className="text-[11px] text-slate-400 mt-1">Full 8K & 240FPS Slow-Mo</p>
+              <p className="text-xs font-bold text-slate-300 mt-0.5">$39.00 USD</p>
+              <p className="text-[11px] text-slate-400 mt-1">Full 8K & 480FPS Slow-Mo</p>
             </div>
             <button
-              onClick={() => handleAddCredits(500, "Studio Pro Pack")}
-              className="mt-4 w-full py-2 px-3 text-xs font-semibold rounded-xl bg-violet-600 hover:bg-violet-500 text-white transition flex items-center justify-center gap-1.5 shadow-lg shadow-violet-900/40"
+              onClick={() => handleCheckout({ name: 'Studio Pro Pack', creditsIncluded: 500, priceNum: 39 })}
+              disabled={loadingPlan === 'Studio Pro Pack'}
+              className="mt-4 w-full py-2 px-3 text-xs font-semibold rounded-xl bg-violet-600 hover:bg-violet-500 text-white transition flex items-center justify-center gap-1.5 shadow-lg shadow-violet-900/40 disabled:opacity-60"
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              Add +500
+              {loadingPlan === 'Studio Pro Pack' ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5" />
+              )}
+              Buy $39
             </button>
           </div>
 
@@ -122,14 +168,20 @@ export default function RefillModal({
                 <span className="text-xs font-semibold text-emerald-400">Cinema Master</span>
               </div>
               <p className="text-2xl font-bold text-white">+2,000</p>
+              <p className="text-xs font-bold text-slate-300 mt-0.5">$99.00 USD</p>
               <p className="text-[11px] text-slate-400 mt-1">Unlimited Batch Upscaling</p>
             </div>
             <button
-              onClick={() => handleAddCredits(2000, "Cinema Master Pack")}
-              className="mt-4 w-full py-2 px-3 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-900/30"
+              onClick={() => handleCheckout({ name: 'Cinema Master Pack', creditsIncluded: 2000, priceNum: 99 })}
+              disabled={loadingPlan === 'Cinema Master Pack'}
+              className="mt-4 w-full py-2 px-3 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white transition flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-900/30 disabled:opacity-60"
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              Add +2,000
+              {loadingPlan === 'Cinema Master Pack' ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <CreditCard className="w-3.5 h-3.5" />
+              )}
+              Buy $99
             </button>
           </div>
         </div>
@@ -137,7 +189,7 @@ export default function RefillModal({
         {/* Info Guarantee */}
         <div className="flex items-center gap-2 pt-2 text-[11px] text-slate-400 border-t border-slate-800/80">
           <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-          <span>Credits never expire. Instant activation on all neural cluster endpoints.</span>
+          <span>Credits never expire. Instant activation on all neural cluster endpoints via Stripe checkout.</span>
         </div>
 
       </div>

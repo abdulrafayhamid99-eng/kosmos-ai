@@ -79,6 +79,33 @@ export const CAMERA_PROFILES: CameraProfile[] = [
     colorHex: '#06b6d4',
     accent: 'border-cyan-500/50 bg-cyan-950/20 text-cyan-400',
   },
+  {
+    id: 'fujifilm_gfx',
+    name: 'Fujifilm GFX 100 II',
+    sub: 'Eterna / Film Simulation • Soft contrast & cinematic pastel tones',
+    badge: 'Eterna Cinema',
+    filter: 'contrast(1.06) saturate(0.92) brightness(1.03) sepia(0.04) hue-rotate(1deg)',
+    colorHex: '#10b981',
+    accent: 'border-emerald-500/50 bg-emerald-950/20 text-emerald-400',
+  },
+  {
+    id: 'panavision_dxl2',
+    name: 'Panavision DXL2',
+    sub: 'Light Iron Color 2 • Warm skin tones & Hollywood blockbuster roll-off',
+    badge: 'Light Iron Color 2',
+    filter: 'sepia(0.10) contrast(1.16) saturate(1.18) brightness(1.01) hue-rotate(-3deg)',
+    colorHex: '#eab308',
+    accent: 'border-yellow-500/50 bg-yellow-950/20 text-yellow-400',
+  },
+  {
+    id: 'leica_sl2s',
+    name: 'Leica SL2-S',
+    sub: 'Leica Cine • Deep micro-contrast & organic shadows',
+    badge: 'Leica Cine Look',
+    filter: 'contrast(1.24) saturate(1.08) brightness(0.99) hue-rotate(-1deg)',
+    colorHex: '#e11d48',
+    accent: 'border-rose-600/50 bg-rose-950/20 text-rose-400',
+  },
 ];
 
 interface ComparisonSliderProps {

@@ -110,7 +110,7 @@ export async function renderVideoOnClientCanvas({
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
-    const targetFpsNum = fps.includes('60') || fps.includes('120') || fps.includes('240') ? 60 : 30;
+    const targetFpsNum = fps.includes('24') ? 24 : fps.includes('48') ? 48 : fps.includes('30') ? 30 : 60;
     const canvasStream = canvas.captureStream(targetFpsNum);
 
     // Extract audio tracks from video element if available

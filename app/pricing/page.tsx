@@ -1,29 +1,89 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import RefillModal from '@/components/RefillModal';
-import { Check, Sparkles, Zap, Shield, Film, ArrowRight, HelpCircle } from 'lucide-react';
+import { useUser } from '@clerk/nextjs';
+import { addCredits, getUserCredits } from '@/lib/credits';
+import { Check, Sparkles, Zap, Shield, ArrowRight, HelpCircle, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function PricingPage() {
+  const { user } = useUser();
+  const currentUserId = user?.id || null;
+
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
   const [showRefillModal, setShowRefillModal] = useState<boolean>(false);
-  const [credits, setCredits] = useState<number>(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('kosmos_credits');
-      return stored ? parseInt(stored, 10) : 100;
-    }
-    return 100;
-  });
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const [credits, setCredits] = useState<number>(() => getUserCredits(currentUserId));
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
 
-  const handleInstantCreditAdd = (amount: number, planName: string) => {
-    const current = parseInt(localStorage.getItem('kosmos_credits') || '100', 10);
-    const updated = current + amount;
-    localStorage.setItem('kosmos_credits', updated.toString());
-    window.dispatchEvent(new Event('kosmos_credits_changed'));
-    setCredits(updated);
-    alert(`🎉 Successfully credited +${amount} render credits to your KosMos AI account for ${planName}!`);
+  // Sync credits with user ID
+  useEffect(() => {
+    setCredits(getUserCredits(currentUserId));
+  }, [currentUserId]);
+
+  // Handle return from Stripe checkout
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const paymentStatus = urlParams.get('payment_status');
+    const creditsParam = urlParams.get('credits');
+    const planParam = urlParams.get('plan');
+
+    if (paymentStatus === 'success' && creditsParam) {
+      const amount = parseInt(creditsParam, 10);
+      if (!isNaN(amount) && amount > 0) {
+        const newTotal = addCredits(amount, currentUserId);
+        setCredits(newTotal);
+        setNotification({
+          type: 'success',
+          message: `Payment successful! Added +${amount} render credits (${planParam || 'Package'}) to your account.`,
+        });
+        window.history.replaceState({}, '', '/pricing');
+      }
+    } else if (paymentStatus === 'cancelled') {
+      setNotification({
+        type: 'info',
+        message: 'Checkout was cancelled. No charges were made.',
+      });
+      window.history.replaceState({}, '', '/pricing');
+    }
+  }, [currentUserId]);
+
+  const handleCheckout = async (plan: { name: string; creditsIncluded: number; priceNum: number; isSubscription?: boolean }) => {
+    try {
+      setLoadingPlan(plan.name);
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          credits: plan.creditsIncluded,
+          planName: plan.name,
+          priceUsd: plan.priceNum,
+          userId: user?.id || 'guest',
+          userEmail: user?.primaryEmailAddress?.emailAddress || undefined,
+          isSubscription: !!plan.isSubscription,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to initiate payment checkout.');
+      }
+
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (err: any) {
+      console.error('Checkout error:', err);
+      setNotification({
+        type: 'error',
+        message: err.message || 'Could not start checkout session. Please try again.',
+      });
+    } finally {
+      setLoadingPlan(null);
+    }
   };
 
   const plans = [
@@ -31,6 +91,7 @@ export default function PricingPage() {
       name: 'Starter Creator',
       tagline: 'Ideal for content creators and YouTubers',
       price: billingPeriod === 'monthly' ? '$19' : '$15',
+      priceNum: billingPeriod === 'monthly' ? 19 : 15,
       period: '/ month',
       creditsIncluded: 300,
       badge: null,
@@ -49,6 +110,7 @@ export default function PricingPage() {
       name: 'Studio Pro',
       tagline: 'Engineered for video editors and commercial suites',
       price: billingPeriod === 'monthly' ? '$49' : '$39',
+      priceNum: billingPeriod === 'monthly' ? 49 : 39,
       period: '/ month',
       creditsIncluded: 1200,
       badge: 'Most Popular',
@@ -68,6 +130,7 @@ export default function PricingPage() {
       name: 'Cinema Enterprise',
       tagline: 'For broadcast newsrooms & feature film studios',
       price: billingPeriod === 'monthly' ? '$149' : '$119',
+      priceNum: billingPeriod === 'monthly' ? 149 : 119,
       period: '/ month',
       creditsIncluded: 5000,
       badge: 'Unrestricted Power',
@@ -75,7 +138,7 @@ export default function PricingPage() {
       buttonBg: 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/40',
       features: [
         '5,000 Render Credits / mo',
-        'Full 8K 240 FPS Extreme Interpolation',
+        'Full 8K 480 FPS Extreme Interpolation',
         'Dedicated Tensor Node (Zero Waiting)',
         'Batch Video Processing API',
         'Lossless 10-bit HDR Color Preservation',
@@ -88,7 +151,7 @@ export default function PricingPage() {
   const faqs = [
     {
       q: 'How are render credits calculated?',
-      a: '1 second of 1080p 60FPS video enhancement uses ~1 credit. Upscaling to 4K uses ~2 credits/sec, while ultra-dense 8K 240FPS synthesis uses ~4 credits/sec.',
+      a: '1 second of 1080p 60FPS video enhancement uses ~1 credit. Upscaling to 4K uses ~2 credits/sec, while ultra-dense 8K 480FPS synthesis uses ~4 credits/sec.',
     },
     {
       q: 'Do my purchased credits expire?',
@@ -100,7 +163,7 @@ export default function PricingPage() {
     },
     {
       q: 'Can I test before subscribing?',
-      a: 'Yes! Every new studio session receives 100 free test credits, and you can generate unlimited 2-second interactive split-slider previews anytime.',
+      a: 'Yes! Every new studio session receives free daily quota and test credits, and you can generate interactive split-slider previews anytime.',
     },
   ];
 
@@ -110,11 +173,41 @@ export default function PricingPage() {
 
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
         
+        {/* Toast / Notification Banner */}
+        {notification && (
+          <div className="mb-8 max-w-2xl mx-auto animate-in slide-in-from-top-4 duration-300">
+            <div className={`p-4 rounded-2xl border flex items-center justify-between gap-3 shadow-xl ${
+              notification.type === 'success'
+                ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200'
+                : notification.type === 'error'
+                ? 'bg-rose-950/80 border-rose-500/50 text-rose-200'
+                : 'bg-slate-900/90 border-cyan-500/40 text-slate-200'
+            }`}>
+              <div className="flex items-center gap-2.5">
+                {notification.type === 'success' ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                ) : notification.type === 'error' ? (
+                  <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0" />
+                ) : (
+                  <Sparkles className="w-5 h-5 text-cyan-400 flex-shrink-0" />
+                )}
+                <span className="text-xs font-semibold">{notification.message}</span>
+              </div>
+              <button
+                onClick={() => setNotification(null)}
+                className="text-xs text-slate-400 hover:text-white underline ml-2"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="text-center max-w-3xl mx-auto mb-12">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-xs font-semibold mb-4">
             <Zap className="w-3.5 h-3.5" />
-            <span>Transparent GPU Compute Pricing</span>
+            <span>Secure Stripe Checkout & Instant GPU Compute</span>
           </div>
           <h1 className="text-3xl sm:text-5xl font-extrabold text-white font-display tracking-tight leading-tight">
             Supercharge Your Video Pipeline with <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-violet-400 to-emerald-400">KosMos AI</span>
@@ -122,6 +215,12 @@ export default function PricingPage() {
           <p className="mt-4 text-sm sm:text-base text-slate-400 max-w-2xl mx-auto">
             Choose a monthly subscription plan or top up on-demand render credits anytime. No contracts, cancel anytime.
           </p>
+
+          {/* Current balance indicator */}
+          <div className="mt-4 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs text-slate-400">
+            <span>Your Active Balance:</span>
+            <strong className="text-cyan-400 font-mono font-bold">{credits} Credits</strong>
+          </div>
 
           {/* Billing Switch */}
           <div className="mt-8 inline-flex items-center p-1 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold">
@@ -194,11 +293,21 @@ export default function PricingPage() {
 
               <div className="mt-8 pt-6 border-t border-slate-800/80">
                 <button
-                  onClick={() => handleInstantCreditAdd(plan.creditsIncluded, plan.name)}
-                  className={`w-full py-3 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${plan.buttonBg}`}
+                  onClick={() => handleCheckout({ ...plan, isSubscription: true })}
+                  disabled={loadingPlan === plan.name}
+                  className={`w-full py-3 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${plan.buttonBg} disabled:opacity-60`}
                 >
-                  <Sparkles className="w-4 h-4" />
-                  <span>Activate {plan.name} (+{plan.creditsIncluded} Cr)</span>
+                  {loadingPlan === plan.name ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Connecting to Checkout...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      <span>Activate {plan.name} (+{plan.creditsIncluded} Cr)</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -214,22 +323,33 @@ export default function PricingPage() {
             </div>
             <h3 className="text-2xl font-bold text-white font-display">Pay-As-You-Go Render Bundles</h3>
             <p className="text-xs text-slate-400 mt-1 max-w-lg">
-              No recurring subscription needed. Buy on-demand GPU render compute packages that never expire.
+              No recurring subscription needed. Buy on-demand GPU render compute packages that never expire via secure Stripe checkout.
             </p>
           </div>
 
           <div className="flex flex-wrap gap-3">
             <button
-              onClick={() => handleInstantCreditAdd(100, "100 Pack")}
-              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-white transition flex items-center gap-1.5"
+              onClick={() => handleCheckout({ name: '100 Credits Pack', creditsIncluded: 100, priceNum: 9, isSubscription: false })}
+              disabled={loadingPlan === '100 Credits Pack'}
+              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-white transition flex items-center gap-1.5 disabled:opacity-60"
             >
+              {loadingPlan === '100 Credits Pack' ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              )}
               <span>+100 Credits ($9)</span>
             </button>
             <button
-              onClick={() => handleInstantCreditAdd(500, "500 Pack")}
-              className="px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-xs font-semibold text-white transition flex items-center gap-1.5 shadow-lg shadow-violet-900/30"
+              onClick={() => handleCheckout({ name: '500 Credits Pack', creditsIncluded: 500, priceNum: 39, isSubscription: false })}
+              disabled={loadingPlan === '500 Credits Pack'}
+              className="px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-xs font-semibold text-white transition flex items-center gap-1.5 shadow-lg shadow-violet-900/30 disabled:opacity-60"
             >
-              <Sparkles className="w-3.5 h-3.5" />
+              {loadingPlan === '500 Credits Pack' ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5" />
+              )}
               <span>+500 Credits ($39)</span>
             </button>
             <button
