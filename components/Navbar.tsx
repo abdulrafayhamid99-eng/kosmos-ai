@@ -150,33 +150,17 @@ export default function Navbar() {
           {/* Clerk Auth Section */}
           <SignedOut>
             <SignInButton mode="modal">
-              <button className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-full transition shadow">
+              <button className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-full shadow transition">
                 Sign In with Google
               </button>
             </SignInButton>
           </SignedOut>
-
           <SignedIn>
             <div className="flex items-center gap-3">
-              {/* Daily Free Quota Badge */}
-              <div
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900/90 border border-cyan-500/30 hover:border-cyan-400 transition text-xs shadow-inner cursor-default"
-                title={`Daily Free Quota: ${remainingClips}/3 clips remaining (10s max each). Resets in ${quota.resetsInFormatted}`}
-              >
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    remainingClips > 0
-                      ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
-                      : 'bg-rose-400 shadow-[0_0_8px_rgba(244,63,94,0.8)] animate-pulse'
-                  }`}
-                />
-                <span className="text-slate-300 font-semibold">
-                  Clips: <strong className={remainingClips > 0 ? 'text-cyan-400 font-bold' : 'text-rose-400 font-bold'}>{remainingClips}/3 Free Today</strong>
-                </span>
-              </div>
-
-              {/* Real Clerk UserButton */}
-              <UserButton afterSignOutUrl="/" />
+              <span className="text-xs bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2.5 py-1 rounded-full">
+                3 Free Clips / 24h
+              </span>
+              <UserButton afterSignOutUrl="/"/>
             </div>
           </SignedIn>
         </div>
