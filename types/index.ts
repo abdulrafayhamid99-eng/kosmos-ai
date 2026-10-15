@@ -10,6 +10,10 @@ export interface HistoryItem {
   timestamp: string;
   processingTimeFormatted: string;
   videoUrl: string;
+  masterUrl?: string;
+  masterVideoUrl?: string;
+  downloadUrl?: string;
+  previewUrl?: string;
   originalVideoUrl?: string;
   userId?: string;
   userEmail?: string;

@@ -1,3 +1,9 @@
 node_modules/
 .next/
 .env*.local
+scratch/
+.renders/
+tasks.md
+__pycache__/
+*.pyc
+tsconfig.tsbuildinfo

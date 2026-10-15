@@ -8,6 +8,27 @@ export const DAILY_FREE_CLIPS_LIMIT = 3;
 export const MAX_CLIP_DURATION_SECONDS = 10;
 export const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000; // 86,400,000 ms
 
+/**
+ * Checks if the current runtime environment is local development or running on localhost.
+ * In development, daily quota limits are bypassed to enable unlimited testing.
+ */
+export function isDevelopmentMode(): boolean {
+  if (process.env.NODE_ENV === 'development') return true;
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '::1' ||
+      host.endsWith('.local') ||
+      host.includes('localhost')
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export interface DailyQuotaInfo {
   freeClipsUsedToday: number;
   lastResetTimestamp: number;
@@ -16,6 +37,7 @@ export interface DailyQuotaInfo {
   isExhausted: boolean;
   maxLimit: number;
   maxSecondsPerClip: number;
+  isDevMode?: boolean;
 }
 
 export function formatTimeRemaining(remainingMs: number): string {
@@ -28,6 +50,20 @@ export function formatTimeRemaining(remainingMs: number): string {
 export function getDailyQuota(userId?: string | null, clerkMetadata?: any): DailyQuotaInfo {
   const now = Date.now();
 
+  // In development / localhost, disable the 3-clip daily limit for unlimited testing
+  if (isDevelopmentMode()) {
+    return {
+      freeClipsUsedToday: 0,
+      lastResetTimestamp: now,
+      clipsRemaining: 9999,
+      resetsInFormatted: 'Unlimited (Local Dev)',
+      isExhausted: false,
+      maxLimit: 9999,
+      maxSecondsPerClip: MAX_CLIP_DURATION_SECONDS,
+      isDevMode: true,
+    };
+  }
+
   if (!userId) {
     return {
       freeClipsUsedToday: 0,
@@ -37,6 +73,7 @@ export function getDailyQuota(userId?: string | null, clerkMetadata?: any): Dail
       isExhausted: false,
       maxLimit: DAILY_FREE_CLIPS_LIMIT,
       maxSecondsPerClip: MAX_CLIP_DURATION_SECONDS,
+      isDevMode: false,
     };
   }
 
@@ -106,6 +143,19 @@ export function getDailyQuota(userId?: string | null, clerkMetadata?: any): Dail
 }
 
 export function consumeFreeClip(userId: string | null | undefined, clerkUser?: any): DailyQuotaInfo {
+  if (isDevelopmentMode()) {
+    return {
+      freeClipsUsedToday: 0,
+      lastResetTimestamp: Date.now(),
+      clipsRemaining: 9999,
+      resetsInFormatted: 'Unlimited (Local Dev)',
+      isExhausted: false,
+      maxLimit: 9999,
+      maxSecondsPerClip: MAX_CLIP_DURATION_SECONDS,
+      isDevMode: true,
+    };
+  }
+
   const effectiveUserId = userId || clerkUser?.id || 'guest_user';
   const current = getDailyQuota(effectiveUserId, clerkUser?.unsafeMetadata);
   const updatedUsed = Math.min(DAILY_FREE_CLIPS_LIMIT, current.freeClipsUsedToday + 1);

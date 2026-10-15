@@ -51,6 +51,50 @@ export function addCredits(amount: number, userId?: string | null): number {
   return updated;
 }
 
+// Atomic Credit Reservation & Hold Functions
+export function getHeldCredits(userId?: string | null): number {
+  if (typeof window === 'undefined') return 0;
+  const key = userId ? `kosmos_held_credits_${userId}` : 'kosmos_held_credits';
+  const val = parseInt(localStorage.getItem(key) || '0', 10);
+  return isNaN(val) ? 0 : Math.max(0, val);
+}
+
+export function setHeldCredits(amount: number, userId?: string | null): void {
+  if (typeof window === 'undefined') return;
+  const key = userId ? `kosmos_held_credits_${userId}` : 'kosmos_held_credits';
+  const valid = Math.max(0, amount);
+  localStorage.setItem(key, valid.toString());
+  window.dispatchEvent(new Event('kosmos_credits_changed'));
+}
+
+export function getAvailableCredits(userId?: string | null): number {
+  const total = getUserCredits(userId);
+  const held = getHeldCredits(userId);
+  return Math.max(0, total - held);
+}
+
+export function holdUserCredits(amount: number, jobId: string, userId?: string | null): boolean {
+  const available = getAvailableCredits(userId);
+  if (available < amount) return false;
+
+  const currentHeld = getHeldCredits(userId);
+  setHeldCredits(currentHeld + amount, userId);
+  return true;
+}
+
+export function commitHeldUserCredits(amount: number, jobId: string, userId?: string | null): number {
+  // Finalize deduction from total balance and release the hold
+  const currentHeld = getHeldCredits(userId);
+  setHeldCredits(Math.max(0, currentHeld - amount), userId);
+  return deductUserCredits(amount, userId);
+}
+
+export function releaseHeldUserCredits(amount: number, jobId: string, userId?: string | null): void {
+  // Release hold on failure without deducting actual balance
+  const currentHeld = getHeldCredits(userId);
+  setHeldCredits(Math.max(0, currentHeld - amount), userId);
+}
+
 // Guest Preview Tracking
 export function hasGuestUsedPreview(): boolean {
   if (typeof window === 'undefined') return false;

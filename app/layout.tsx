@@ -1,4 +1,4 @@
-import "./globals.css";
+import './globals.css';
 import type { Metadata, Viewport } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 
@@ -34,7 +34,7 @@ export default function RootLayout({
       publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
     >
       <html lang="en" className="dark" dir="ltr" suppressHydrationWarning>
-        <body className="antialiased bg-slate-950 text-slate-100 min-h-screen selection:bg-cyan-500/30 selection:text-cyan-200">
+        <body className="bg-neutral-950 text-neutral-100 min-h-screen antialiased selection:bg-cyan-500/30 selection:text-cyan-200">
           {children}
         </body>
       </html>

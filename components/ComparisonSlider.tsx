@@ -371,8 +371,8 @@ export default function ComparisonSlider({
       return;
     }
 
-    if (!hasRenderedOutput) {
-      alert('Please render your video preview or full 4K first before exporting.');
+    if (!hasRenderedOutput || !enhancedVideoSrc || enhancedVideoSrc === sourceA) {
+      alert('AI Rendering Required: Please render your video preview or full resolution master first before exporting.');
       return;
     }
 
