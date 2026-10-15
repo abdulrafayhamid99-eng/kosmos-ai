@@ -47,11 +47,55 @@ export async function GET(req: NextRequest) {
       }
 
       if (!filePath || !fs.existsSync(filePath)) {
-        console.warn(`[Download API] Rendered file for job ${safeJobId} (${safeType}) not found on disk.`);
-        return NextResponse.json(
-          { error: `Rendered video for job ${safeJobId} not found on server.` },
-          { status: 404 }
-        );
+        const modalDownloadBase =
+          process.env.MODAL_DOWNLOAD_URL ||
+          'https://abdulrafayhamid99--kosmos-ai-pipeline-download-video-endpoint.us-east.modal.run';
+        const remoteTarget = `${modalDownloadBase}?job_id=${encodeURIComponent(safeJobId)}&type=${encodeURIComponent(safeType)}${isDownload ? '&download=true' : ''}`;
+
+        console.log(`[Download API] File not on local filesystem; streaming from persistent Modal volume: ${remoteTarget}`);
+
+        const forwardHeaders: Record<string, string> = {};
+        const range = req.headers.get('range');
+        if (range) {
+          forwardHeaders['Range'] = range;
+        }
+
+        try {
+          const modalResp = await fetch(remoteTarget, {
+            headers: forwardHeaders,
+            cache: 'no-store',
+          });
+
+          if (!modalResp.ok || !modalResp.body) {
+            console.warn(`[Download API] Modal volume reported HTTP ${modalResp.status} for ${safeJobId}`);
+            return NextResponse.json(
+              { error: `Rendered video for job ${safeJobId} not found on server or persistent storage volume.` },
+              { status: modalResp.status === 404 ? 404 : 502 }
+            );
+          }
+
+          const responseHeaders = new Headers();
+          modalResp.headers.forEach((val, key) => {
+            const k = key.toLowerCase();
+            if (['content-type', 'content-length', 'content-range', 'accept-ranges', 'content-disposition', 'cache-control'].includes(k)) {
+              responseHeaders.set(key, val);
+            }
+          });
+          if (!responseHeaders.has('Accept-Ranges')) {
+            responseHeaders.set('Accept-Ranges', 'bytes');
+          }
+
+          return new NextResponse(modalResp.body as any, {
+            status: modalResp.status,
+            headers: responseHeaders,
+          });
+        } catch (fetchErr: any) {
+          console.error(`[Download API] Error proxying video from Modal volume for ${safeJobId}:`, fetchErr);
+          return NextResponse.json(
+            { error: `Failed to stream video from persistent storage: ${fetchErr?.message || fetchErr}` },
+            { status: 502 }
+          );
+        }
       }
 
       const stat = fs.statSync(filePath);

@@ -7,7 +7,7 @@ import { CAMERA_PRESETS, FRAME_RATE_PRESETS, CameraPreset, FrameRatePreset } fro
 import { createJob, updateJob } from '@/lib/jobs';
 import Replicate from 'replicate';
 
-export const maxDuration = 600;
+export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 // Valid preset identifiers matching Phase 1 broadcast standards
@@ -672,33 +672,39 @@ export async function POST(req: Request) {
         data.modelTier === 'x4plus'
           ? 'x4plus'
           : data.modelTier === 'compact'
-          ? 'compact'
-          : (String(rawPayload.enhancementMode || '').toLowerCase().includes('studio') &&
-             !String(rawPayload.enhancementMode || '').toLowerCase().includes('compact') &&
-             !String(rawPayload.enhancementMode || '').toLowerCase().includes('fast'))
-            ? 'x4plus'
-            : 'compact',
+            ? 'compact'
+            : (String(rawPayload.enhancementMode || '').toLowerCase().includes('studio') &&
+              !String(rawPayload.enhancementMode || '').toLowerCase().includes('compact') &&
+              !String(rawPayload.enhancementMode || '').toLowerCase().includes('fast'))
+              ? 'x4plus'
+              : 'compact',
       is_preview: Boolean(data.isPreview ?? false),
       unsharp_override: data.unsharpOverride || data.unsharp_override || undefined,
+      async_dispatch: true,
+      asyncDispatch: true,
     };
 
-    console.log(`[Upscale API] Dispatching Job ${jobId} asynchronously to Modal Cloud Worker (Detached Execution): ${modalEndpoint}`);
+    console.log(`[Upscale API] Awaiting detached dispatch for Job ${jobId} to Modal Cloud Worker: ${modalEndpoint}`);
 
-    // --------------------------------------------------------------------------
-    // 7. DETACHED ASYNCHRONOUS EXECUTION (PREVENTS CLIENT CANCELLATION)
-    // Runs to completion independently in background even if browser tab closes or client disconnects
-    // --------------------------------------------------------------------------
-    executeModalPipelineInBackground(
-      jobId,
-      userId,
-      creditCost,
-      modalEndpoint,
+    // Await prompt handoff to Modal worker (< 1 second)
+    const modalRes = await fetch(modalEndpoint, {
+      method: 'POST',
       headers,
-      modalPayload,
-      data
-    ).catch((err) => {
-      console.error(`[Upscale API] Background pipeline trigger exception for ${jobId}:`, err);
+      body: JSON.stringify(modalPayload),
+      signal: AbortSignal.timeout(30000),
     });
+
+    if (!modalRes.ok) {
+      const errText = await modalRes.text();
+      throw new Error(`Modal dispatch failed with HTTP ${modalRes.status}: ${errText.slice(0, 200)}`);
+    }
+
+    const modalDispatchResult = await modalRes.json();
+    if (modalDispatchResult.success === false) {
+      throw new Error(modalDispatchResult.error || 'Modal dispatch reported failure');
+    }
+
+    console.log(`[Upscale API] Job ${jobId} successfully spawned on Modal detached GPU worker. Returning immediate 200.`);
 
     // --------------------------------------------------------------------------
     // 8. RETURN IMMEDIATE 200 RESPONSE WITH JOB_ID FOR 3-SECOND POLLING

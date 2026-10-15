@@ -33,6 +33,8 @@ except Exception:
 # ==============================================================================
 if HAS_MODAL:
     app = modal.App("kosmos-ai-pipeline")
+    kosmos_jobs = modal.Dict.from_name("kosmos-ai-jobs", create_if_missing=True)
+    kosmos_renders = modal.Volume.from_name("kosmos-ai-renders", create_if_missing=True)
 
     pipeline_image = (
         modal.Image.debian_slim(python_version="3.10")
@@ -1063,6 +1065,21 @@ class BroadcastEnhancementPipeline:
             if not os.path.exists(graded_master) or os.path.getsize(graded_master) == 0:
                 raise RuntimeError(f"Output broadcast master file is missing or zero bytes: {graded_master}")
 
+            # Persist rendered outputs to durable Modal volume /renders if mounted
+            stored_on_volume = False
+            if os.path.exists("/renders"):
+                try:
+                    vol_master = f"/renders/{job_id}_master.mp4"
+                    shutil.copyfile(graded_master, vol_master)
+                    print(f"[KosMos Engine] Saved broadcast master to persistent volume: {vol_master} ({os.path.getsize(vol_master)} bytes)")
+                    if os.path.exists(preview_proxy) and os.path.getsize(preview_proxy) > 0:
+                        vol_preview = f"/renders/{job_id}_preview.mp4"
+                        shutil.copyfile(preview_proxy, vol_preview)
+                        print(f"[KosMos Engine] Saved preview proxy to persistent volume: {vol_preview} ({os.path.getsize(vol_preview)} bytes)")
+                    stored_on_volume = True
+                except Exception as vol_err:
+                    print(f"[KosMos Engine] Note on volume write: {vol_err}")
+
             # If no S3 or S3 failed, package base64 directly without multi-field bloat
             if not master_url and os.path.exists(graded_master):
                 import base64
@@ -1081,9 +1098,16 @@ class BroadcastEnhancementPipeline:
 
             print(f"[KosMos Engine] Job {job_id} complete! Master: {master_size_mb} | Preview: {preview_size_mb} in {duration_ms}ms")
 
-            # Determine genuine web URLs (only if hosted on external S3/CDN)
-            genuine_master_url = master_url if (master_url and master_url.startswith("http")) else ""
-            genuine_preview_url = preview_url if (preview_url and preview_url.startswith("http")) else genuine_master_url
+            # Determine genuine web URLs (hosted on S3, or via durable download route backed by persistent volume)
+            if master_url and master_url.startswith("http"):
+                genuine_master_url = master_url
+                genuine_preview_url = preview_url if (preview_url and preview_url.startswith("http")) else genuine_master_url
+            elif stored_on_volume:
+                genuine_master_url = f"/api/download?job_id={job_id}&type=master"
+                genuine_preview_url = f"/api/download?job_id={job_id}&type=preview"
+            else:
+                genuine_master_url = ""
+                genuine_preview_url = ""
 
             return {
                 "success": True,
@@ -1189,7 +1213,8 @@ if HAS_MODAL and app is not None:
         gpu="A10G",
         timeout=1800,
         scaledown_window=300,
-        secrets=pipeline_secrets
+        secrets=pipeline_secrets,
+        volumes={"/renders": kosmos_renders}
     )
     def process_video_modal(
         video_url: str,
@@ -1209,23 +1234,74 @@ if HAS_MODAL and app is not None:
     ) -> Dict[str, Any]:
         """Serverless GPU Modal worker entrypoint via Python SDK."""
         job = job_id or f"kosmos_{int(time.time())}"
+        try:
+            jobs = modal.Dict.from_name("kosmos-ai-jobs", create_if_missing=True)
+            jobs[job] = {
+                "success": True,
+                "status": "processing",
+                "progress": 20,
+                "stage": "Modal A10G GPU worker active: Processing neural enhancement...",
+                "jobId": job,
+                "updatedAt": int(time.time() * 1000)
+            }
+        except Exception as err:
+            print(f"[KosMos Modal Worker] Note on progress tracking update: {err}")
+
         pipeline = get_pipeline()
-        return pipeline.run_full_pipeline(
-            input_video_url=video_url,
-            camera_preset_id=camera_preset_id,
-            target_fps=target_fps,
-            grain_level=grain_level,
-            job_id=job,
-            field_mode=field_mode,
-            shutter_fix=shutter_fix,
-            target_gamma=target_gamma,
-            target_resolution=target_resolution,
-            enable_face_restore=enable_face_restore,
-            face_restore_fidelity=face_restore_fidelity,
-            enable_real_esrgan=enable_real_esrgan,
-            model_tier=model_tier,
-            unsharp_override=unsharp_override
-        )
+        try:
+            result = pipeline.run_full_pipeline(
+                input_video_url=video_url,
+                camera_preset_id=camera_preset_id,
+                target_fps=target_fps,
+                grain_level=grain_level,
+                job_id=job,
+                field_mode=field_mode,
+                shutter_fix=shutter_fix,
+                target_gamma=target_gamma,
+                target_resolution=target_resolution,
+                enable_face_restore=enable_face_restore,
+                face_restore_fidelity=face_restore_fidelity,
+                enable_real_esrgan=enable_real_esrgan,
+                model_tier=model_tier,
+                unsharp_override=unsharp_override
+            )
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            print(f"[KosMos Modal GPU Pipeline Failure]: {e}\n{tb}")
+            try:
+                jobs = modal.Dict.from_name("kosmos-ai-jobs", create_if_missing=True)
+                jobs[job] = {
+                    "success": False,
+                    "status": "failed",
+                    "jobId": job,
+                    "error": str(e),
+                    "failedAt": int(time.time() * 1000)
+                }
+            except Exception:
+                pass
+            raise e
+
+        # Commit durable renders volume to guarantee cross-container file availability
+        try:
+            kosmos_renders.commit()
+            print(f"[KosMos Modal Worker] Committed rendered assets for Job {job} to persistent volume.")
+        except Exception as ve:
+            print(f"[KosMos Modal Worker] Volume commit note: {ve}")
+
+        # Update durable job dictionary
+        try:
+            jobs = modal.Dict.from_name("kosmos-ai-jobs", create_if_missing=True)
+            result["status"] = "completed"
+            result["progress"] = 100
+            result["stage"] = "Enhancement complete! Video ready for export."
+            result["completedAt"] = int(time.time() * 1000)
+            jobs[job] = result
+            print(f"[KosMos Modal Worker] Job {job} marked completed in durable kosmos-ai-jobs store.")
+        except Exception as de:
+            print(f"[KosMos Modal Worker] Job store update note: {de}")
+
+        return result
 
     # --------------------------------------------------------------------------
     # FASTAPI ENDPOINT REQUEST MODEL & ADAPTER
@@ -1272,13 +1348,16 @@ if HAS_MODAL and app is not None:
         is_preview: Optional[bool] = False
         unsharp_override: Optional[str] = None
         unsharpOverride: Optional[str] = None
+        async_dispatch: Optional[bool] = False
+        asyncDispatch: Optional[bool] = False
 
     @app.function(
         image=pipeline_image,
         gpu="A10G",
         timeout=1800,
         scaledown_window=300,
-        secrets=pipeline_secrets
+        secrets=pipeline_secrets,
+        volumes={"/renders": kosmos_renders}
     )
     @modal.fastapi_endpoint(method="POST")
     def process_video_endpoint(req: VideoProcessRequest) -> Dict[str, Any]:
@@ -1385,8 +1464,60 @@ if HAS_MODAL and app is not None:
         # 12. Resolve Unsharp Override (Optional, used for controlled A/B testing)
         unsharp_override = data.get("unsharp_override") or data.get("unsharpOverride")
 
-        print(f"[KosMos Modal Endpoint] Processing Job {job_id} | Res: {target_resolution} | Preset: {camera_preset_id} | FPS: {target_fps} | Tier: {model_tier} | FaceRestore: {enable_face_restore} (Fidelity: {face_restore_fidelity})")
+        # 13. Resolve Asynchronous Dispatch Flag
+        raw_async = data.get("async_dispatch") or data.get("asyncDispatch")
+        async_dispatch = raw_async is True or str(raw_async).lower() in ("true", "1")
 
+        print(f"[KosMos Modal Endpoint] Job {job_id} | Async: {async_dispatch} | Res: {target_resolution} | Preset: {camera_preset_id} | FPS: {target_fps} | Tier: {model_tier} | FaceRestore: {enable_face_restore} (Fidelity: {face_restore_fidelity})")
+
+        # Asynchronous decoupled execution path (avoids holding HTTP connection open)
+        if async_dispatch:
+            try:
+                jobs = modal.Dict.from_name("kosmos-ai-jobs", create_if_missing=True)
+                jobs[job_id] = {
+                    "success": True,
+                    "status": "processing",
+                    "progress": 5,
+                    "stage": "Job dispatched to Modal A10G Cloud Worker...",
+                    "jobId": job_id,
+                    "createdAt": int(time.time() * 1000),
+                    "targetResolution": target_resolution,
+                    "cameraPreset": camera_preset_id,
+                    "targetFps": target_fps,
+                    "modelTier": model_tier,
+                    "estimatedSecondsRemaining": 25 if data.get("is_preview") else 55,
+                }
+            except Exception as e:
+                print(f"[KosMos Modal Endpoint] Note on initial job dict state: {e}")
+
+            process_video_modal.spawn(
+                video_url=video_url,
+                camera_preset_id=camera_preset_id,
+                target_fps=target_fps,
+                grain_level=grain_level,
+                job_id=job_id,
+                field_mode=field_mode,
+                shutter_fix=shutter_fix,
+                target_gamma=target_gamma,
+                target_resolution=target_resolution,
+                enable_face_restore=enable_face_restore,
+                face_restore_fidelity=face_restore_fidelity,
+                enable_real_esrgan=enable_real_esrgan,
+                model_tier=model_tier,
+                unsharp_override=unsharp_override,
+            )
+            print(f"[KosMos Modal Endpoint] Successfully spawned detached GPU worker for Job {job_id}")
+            return {
+                "success": True,
+                "jobId": job_id,
+                "status": "processing",
+                "progress": 5,
+                "stage": "Job dispatched to Modal A10G Cloud Worker...",
+                "pollUrl": f"/api/status?job_id={job_id}",
+                "worker": "Modal Serverless A10G Cloud GPU (Async Worker)",
+            }
+
+        # Synchronous execution fallback (for CLI harness or direct local runs)
         try:
             return process_video_modal.local(
                 video_url=video_url,
@@ -1426,6 +1557,72 @@ if HAS_MODAL and app is not None:
                     raise HTTPException(status_code=500, detail=str(e))
                 except Exception:
                     raise e
+
+    @app.function(image=pipeline_image, timeout=60)
+    @modal.fastapi_endpoint(method="GET")
+    def get_status_endpoint(job_id: str = "") -> Dict[str, Any]:
+        """Durable job status query endpoint backed by Modal Dict."""
+        from fastapi.responses import JSONResponse
+        if not job_id:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": "Missing job_id query parameter", "status": "bad_request"}
+            )
+
+        try:
+            jobs = modal.Dict.from_name("kosmos-ai-jobs", create_if_missing=True)
+            if job_id not in jobs:
+                return JSONResponse(
+                    status_code=404,
+                    content={"success": False, "error": f"Job '{job_id}' not found in durable store", "status": "not_found"}
+                )
+
+            job_data = jobs[job_id]
+            return JSONResponse(status_code=200, content=job_data)
+        except Exception as e:
+            return JSONResponse(
+                status_code=500,
+                content={"success": False, "error": str(e), "status": "server_error"}
+            )
+
+    @app.function(
+        image=pipeline_image,
+        volumes={"/renders": kosmos_renders},
+        timeout=600
+    )
+    @modal.fastapi_endpoint(method="GET")
+    def download_video_endpoint(job_id: str = "", type: str = "master", download: bool = False):
+        """Universal video delivery endpoint streaming from persistent Modal Volume with Range support."""
+        from fastapi.responses import FileResponse, JSONResponse
+        if not job_id:
+            return JSONResponse(status_code=400, content={"error": "Missing job_id query parameter"})
+
+        try:
+            kosmos_renders.reload()
+        except Exception:
+            pass
+
+        clean_id = "".join(c for c in job_id if c.isalnum() or c in "-_")
+        clean_type = "preview" if "preview" in str(type).lower() else "master"
+
+        file_path = f"/renders/{clean_id}_{clean_type}.mp4"
+        if not os.path.exists(file_path):
+            file_path = f"/renders/{clean_id}_master.mp4"
+
+        if not os.path.exists(file_path):
+            return JSONResponse(
+                status_code=404,
+                content={"error": f"Rendered video for job '{clean_id}' not found on storage volume."}
+            )
+
+        headers = {
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=86400",
+        }
+        filename = f"KosMos_Enhanced_{clean_id}_{clean_type}.mp4"
+        if download:
+            return FileResponse(file_path, media_type="video/mp4", filename=filename, headers=headers)
+        return FileResponse(file_path, media_type="video/mp4", headers=headers)
 
 # ==============================================================================
 # 5. CLI VALIDATION HARNESS

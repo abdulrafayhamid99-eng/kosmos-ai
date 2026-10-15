@@ -280,11 +280,52 @@ export default function Home() {
             setProgressPercent(100);
             localStorage.removeItem('kosmos_active_job_id');
           }
-        } else if (data.status === 'processing' || data.status === 'pending') {
+        } else if (data.status === 'processing' || data.status === 'pending' || data.status === 'queued') {
           setIsProcessing(true);
           setIsRendering(true);
-          setCurrentStepText('Reconnected to active GPU upscale task...');
-          setProgressPercent(data.progressPercent || 50);
+          setCurrentStepText(data.stage || 'Reconnected to active GPU upscale task...');
+          setProgressPercent(data.progress || data.progressPercent || 50);
+
+          const pollTimer = setInterval(async () => {
+            if (!isMounted) {
+              clearInterval(pollTimer);
+              return;
+            }
+            try {
+              const pRes = await fetch(`/api/status?job_id=${encodeURIComponent(activeJobId)}`);
+              if (!pRes.ok) return;
+              const pData = await pRes.json();
+              if (pData.status === 'succeeded' || pData.status === 'completed' || pData.result?.master_video_url || pData.result?.video_url) {
+                clearInterval(pollTimer);
+                const resObj = pData.result || pData;
+                const finalUrl = resObj.master_video_url || resObj.video_url || resObj.preview_url || resObj.downloadUrl || '';
+                if (finalUrl) {
+                  setEnhancedVideoUrl(finalUrl);
+                  setProcessedResult(resObj);
+                  setIsEnhanced(true);
+                  setIsRendering(false);
+                  setIsProcessing(false);
+                  setProgressPercent(100);
+                  setCurrentStepText('Enhancement complete! Video ready for export.');
+                  localStorage.removeItem('kosmos_active_job_id');
+                }
+              } else if (pData.status === 'processing' || pData.status === 'queued') {
+                if (typeof pData.progress === 'number') {
+                  setProgressPercent(Math.min(98, pData.progress));
+                }
+                if (pData.stage) {
+                  setCurrentStepText(pData.stage);
+                }
+              } else if (pData.status === 'failed') {
+                clearInterval(pollTimer);
+                setIsRendering(false);
+                setIsProcessing(false);
+                localStorage.removeItem('kosmos_active_job_id');
+              }
+            } catch (pErr) {
+              console.warn('[Reconnect Polling Check]:', pErr);
+            }
+          }, 3000);
         } else if (data.status === 'failed') {
           localStorage.removeItem('kosmos_active_job_id');
         }
@@ -571,7 +612,8 @@ export default function Home() {
             });
             if (!statusRes.ok) {
               consecutiveErrors++;
-              if (consecutiveErrors >= 5) {
+              // 30 consecutive poll failures (90 seconds) before declaring permanent disconnection
+              if (consecutiveErrors >= 30) {
                 if (intervalId) clearInterval(intervalId);
                 if (pollInterval) clearInterval(pollInterval);
                 reject(new Error(`Lost connection to server while polling job status (HTTP ${statusRes.status})`));
