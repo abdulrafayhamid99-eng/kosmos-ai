@@ -145,13 +145,13 @@ export const FieldSelector: React.FC<FieldSelectorProps> = ({
               </div>
               <div>
                 <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-                  Universal Shutter Engine
+                  Dejudder &amp; Motion Smoothing
                   <span className="text-[9px] font-mono text-cyan-300 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-500/20">
-                    Jello Fix
+                    Cadence Smoothing
                   </span>
                 </h4>
                 <p className="text-[11px] text-slate-400 leading-tight mt-0.5">
-                  Rolling Shutter &amp; skew correction with optical flow 180° motion blur.
+                  Temporal dejuddering filter and blend to reduce motion stutter and judder.
                 </p>
               </div>
             </div>

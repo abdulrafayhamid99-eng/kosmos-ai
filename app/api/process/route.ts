@@ -19,6 +19,12 @@ export async function POST(req: Request) {
     let isPreview = false;
     let fileSizeMb = '';
     let durationFormatted = '';
+    let fieldMode = 'progressive';
+    let shutterFix = false;
+    let targetGamma = 'rec709';
+    let grainLevel = 0;
+    let enableFaceRestore = false;
+    let modelTier = 'compact';
 
     // Handle both multipart/form-data (direct video file upload) and application/json
     if (contentType.includes('multipart/form-data')) {
@@ -45,6 +51,12 @@ export async function POST(req: Request) {
       isPreview = formData.get('isPreview') === 'true';
       fileSizeMb = (formData.get('fileSizeMb') as string) || '';
       durationFormatted = (formData.get('durationFormatted') as string) || '';
+      fieldMode = (formData.get('fieldMode') as string) || fieldMode;
+      shutterFix = formData.get('shutterFix') === 'true';
+      targetGamma = (formData.get('targetGamma') as string) || targetGamma;
+      grainLevel = parseInt(String(formData.get('grainLevel') || 0), 10) || 0;
+      enableFaceRestore = formData.get('enableFaceRestore') === 'true';
+      modelTier = (formData.get('modelTier') as string) || modelTier;
     } else {
       let body: any;
       try {
@@ -68,6 +80,12 @@ export async function POST(req: Request) {
       isPreview = !!body.isPreview;
       fileSizeMb = body.fileSizeMb || '';
       durationFormatted = body.durationFormatted || '';
+      fieldMode = body.fieldMode || fieldMode;
+      shutterFix = !!body.shutterFix;
+      targetGamma = body.targetGamma || targetGamma;
+      grainLevel = parseInt(String(body.grainLevel || 0), 10) || 0;
+      enableFaceRestore = !!body.enableFaceRestore;
+      modelTier = body.modelTier || modelTier;
     }
 
     // Determine output resolution dimensions
@@ -129,15 +147,19 @@ export async function POST(req: Request) {
       );
     }
 
-    let targetFpsNum = 60;
-    const matchFps = String(fps).match(/\d+/);
-    if (matchFps) targetFpsNum = parseInt(matchFps[0], 10);
+    let targetFpsNum = 0;
+    if (!fps.toLowerCase().includes('native') && !fps.toLowerCase().includes('original')) {
+      const matchFps = String(fps).match(/\d+/);
+      if (matchFps) targetFpsNum = parseInt(matchFps[0], 10);
+    }
 
-    let camKey = 'arri-alexa-35';
+    let camKey = 'neutral';
     const rawCam = String(cameraProfile).toLowerCase();
-    if (rawCam.includes('fuji') || rawCam.includes('eterna')) camKey = 'fuji-eterna';
+    if (rawCam.includes('neutral') || rawCam.includes('clean') || !rawCam) camKey = 'neutral';
+    else if (rawCam.includes('fuji') || rawCam.includes('eterna')) camKey = 'fuji-eterna';
     else if (rawCam.includes('panavision') || rawCam.includes('dxl')) camKey = 'panavision-dxl2';
     else if (rawCam.includes('leica') || rawCam.includes('sl2')) camKey = 'leica-sl2s-cine';
+    else if (rawCam.includes('arri') || rawCam.includes('alexa')) camKey = 'arri-alexa-35';
 
     let videoBase64: string | undefined = undefined;
     if (mediaUrl.startsWith('data:') && mediaUrl.includes(';base64,')) {
@@ -153,19 +175,20 @@ export async function POST(req: Request) {
       camera_profile: camKey,
       target_fps: targetFpsNum,
       fps: targetFpsNum,
-      grain_level: 15,
+      grain_level: grainLevel,
       resolution: repRes,
       target_resolution: repRes,
       lut: camKey,
       lut_file: `${camKey}.cube`,
       lut_preset: camKey,
-      field_mode: 'progressive',
-      scan_mode: 'progressive',
-      shutter_fix: false,
-      target_gamma: 'rec709',
-      enable_face_restore: true,
-      enable_real_esrgan: true,
-      enable_rife: true,
+      field_mode: fieldMode,
+      scan_mode: fieldMode,
+      shutter_fix: shutterFix,
+      target_gamma: targetGamma,
+      enable_face_restore: enableFaceRestore,
+      model_tier: modelTier,
+      enable_real_esrgan: !enhancementMode.toLowerCase().includes('keep original') && !enhancementMode.toLowerCase().includes('passthrough'),
+      enable_rife: false, // Standard resampling mode active; AI interpolation tracked in capability matrix
       is_preview: isPreview,
     };
 
@@ -274,6 +297,9 @@ export async function POST(req: Request) {
       outputFileSizeFormatted: modalData.outputFileSizeFormatted || modalData.output_file_size_formatted || outputFileSizeFormatted,
       previewFileSizeFormatted: modalData.previewFileSizeFormatted || modalData.preview_file_size_formatted || '2.5 MB',
       worker: 'Modal Serverless A10G Cloud GPU',
+      qc: modalData.qc || null,
+      source_metadata: modalData.source_metadata || null,
+      output_metadata: modalData.output_metadata || null,
     });
   } catch (error: any) {
     console.error('[Replicate AI Pipeline Error]:', error);

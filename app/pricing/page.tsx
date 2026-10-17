@@ -118,11 +118,11 @@ export default function PricingPage() {
       buttonBg: 'bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-white shadow-lg shadow-violet-900/50',
       features: [
         '1,200 Render Credits / mo',
-        'Full 8K Cinematic Neural Upscale',
-        'Super Slow-Mo Interpolation (120 FPS)',
-        'Real-ESRGAN Texture Reconstruction',
-        'Priority NVIDIA H100 GPU Allocation',
-        'Apple ProRes 422 HQ & HEVC Export',
+        '8K Resolution Export Dimensions',
+        'Frame-Rate Conversion up to 120 FPS',
+        'Real-ESRGAN Texture Enhancement',
+        'Priority Cloud GPU Allocation',
+        'Broadcast Master H.264 & WebM Export',
         'Interactive Split Comparison Tool',
       ],
     },
@@ -138,12 +138,12 @@ export default function PricingPage() {
       buttonBg: 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/40',
       features: [
         '5,000 Render Credits / mo',
-        'Full 8K 480 FPS Extreme Interpolation',
-        'Dedicated Tensor Node (Zero Waiting)',
+        '8K Dimensions & 240 FPS Conversion Mode',
+        'Dedicated Cloud Processing Queue',
         'Batch Video Processing API',
-        'Lossless 10-bit HDR Color Preservation',
+        'Broadcast Rec.709 & Flat-Log Support',
         'Custom Fine-Tuned Film Grain Models',
-        '24/7 Dedicated VFX Engineer Support',
+        '24/7 Dedicated Support',
       ],
     },
   ];
@@ -151,7 +151,7 @@ export default function PricingPage() {
   const faqs = [
     {
       q: 'How are render credits calculated?',
-      a: '1 second of 1080p 60FPS video enhancement uses ~1 credit. Upscaling to 4K uses ~2 credits/sec, while ultra-dense 8K 480FPS synthesis uses ~4 credits/sec.',
+      a: '1 second of 1080p 60FPS video enhancement uses ~1 credit. Upscaling to 4K uses ~2 credits/sec, while high-compute 8K or 240FPS export uses ~4 credits/sec.',
     },
     {
       q: 'Do my purchased credits expire?',
@@ -159,7 +159,7 @@ export default function PricingPage() {
     },
     {
       q: 'What video formats are supported?',
-      a: 'KosMos AI natively ingests MP4, MOV, MKV, WebM, and compressed WhatsApp/mobile clips. We export in pristine HEVC H.265 and ProRes 422 HQ.',
+      a: 'KosMos AI natively ingests MP4, MOV, MKV, WebM, and compressed mobile clips. We export in broadcast-standard high-bitrate H.264 MP4 with preserved audio.',
     },
     {
       q: 'Can I test before subscribing?',

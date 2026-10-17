@@ -63,13 +63,13 @@ export const FrameRateSelector: React.FC<FrameRateSelectorProps> = ({
           </div>
           <div>
             <h3 className="text-lg font-semibold text-white tracking-wide flex items-center gap-2">
-              Neural Temporal Synthesis (RIFE v4.6)
+              Broadcast Frame-Rate Conversion
               <span className="text-xs font-mono py-0.5 px-2 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-300">
-                Bidirectional Optical Flow
+                CFR Timeline Standard
               </span>
             </h3>
             <p className="text-xs text-slate-400">
-              Interpolate frames with AI motion vectors from 24 up to 240 FPS without ghosting or tearing.
+              Convert frame rates from 24 up to 240 FPS with CFR timeline standardization for broadcast and streaming standards.
             </p>
           </div>
         </div>
@@ -198,16 +198,16 @@ export const FrameRateSelector: React.FC<FrameRateSelectorProps> = ({
         })}
       </div>
 
-      {/* RIFE Info Footer */}
+      {/* Frame Rate Info Footer */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl border border-white/5 bg-slate-950/40 p-3.5 text-xs text-slate-400">
         <div className="flex items-center gap-2">
           <Activity className="h-4 w-4 text-cyan-400" />
           <span>
-            <strong className="text-slate-200 font-medium">Neural Flow Vectoring:</strong> RIFE v4.6 generates multi-scale intermediate motion fields to synthesize sub-pixel intermediate frames.
+            <strong className="text-slate-200 font-medium">Standards Conversion:</strong> Standard broadcast resampling conforms clip cadence to the target rate using CFR timing.
           </span>
         </div>
         <span className="font-mono text-[11px] text-cyan-400 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-500/20 whitespace-nowrap">
-          Hardware Accelerated
+          Broadcast Standard
         </span>
       </div>
     </div>

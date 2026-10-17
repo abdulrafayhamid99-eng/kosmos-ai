@@ -71,11 +71,20 @@ export const CAMERA_PROFILES: CameraProfile[] = [
     accent: 'border-red-500/50 bg-red-950/20 text-red-400',
   },
   {
+    id: 'neutral',
+    name: 'Neutral Rec.709 (No LUT)',
+    sub: 'Clean AI upscale preserving authentic source colors',
+    badge: 'Newsroom Neutral',
+    filter: 'none',
+    colorHex: '#06b6d4',
+    accent: 'border-cyan-500/50 bg-cyan-950/20 text-cyan-400',
+  },
+  {
     id: 'native_clean',
-    name: 'Native Uncolored',
-    sub: 'Clean AI upscale without color science',
-    badge: 'Clean AI Neutral',
-    filter: 'contrast(1.18) saturate(1.20) brightness(1.02)',
+    name: 'Native Uncolored (No LUT)',
+    sub: 'Clean AI upscale preserving original colors',
+    badge: 'Clean Neutral',
+    filter: 'none',
     colorHex: '#06b6d4',
     accent: 'border-cyan-500/50 bg-cyan-950/20 text-cyan-400',
   },
@@ -462,7 +471,8 @@ export default function ComparisonSlider({
   // Active Cinema Camera Profile calculation
   const activeProfile =
     CAMERA_PROFILES.find((p) => p.id === cameraProfile || p.name === cameraProfile) ||
-    CAMERA_PROFILES[5];
+    CAMERA_PROFILES.find((p) => p.id === 'neutral') ||
+    CAMERA_PROFILES[0];
 
   // Enhanced video styling: Crisp super-resolution grading combined with Cinema Camera Profile emulation
   const enhancedFilterStyle = isAiSharpenActive

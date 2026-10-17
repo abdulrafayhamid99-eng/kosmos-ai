@@ -51,9 +51,9 @@ export default function AboutPage() {
               <div className="p-2 w-fit rounded-xl bg-violet-500/20 text-violet-400 border border-violet-500/30">
                 <Layers className="w-5 h-5" />
               </div>
-              <h3 className="text-base font-bold text-white font-display">Neural Optical Flow</h3>
+              <h3 className="text-base font-bold text-white font-display">Broadcast Frame-Rate Conversion</h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Rather than primitive motion-blur blending or frame duplication, our RIFE v4.6 architecture tracks pixel velocities across micro-vectors, synthesizing authentic intermediate frames with cinema-grade smoothness.
+                Engineered for newsroom, archival, and streaming workflows, KosMos AI provides standards-compliant frame-rate conversion, CFR timeline stabilization, and temporal smoothing across cinematic and broadcast standards.
               </p>
             </div>
 

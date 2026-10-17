@@ -1,5 +1,5 @@
 export interface CameraPreset {
-  id: 'arri-alexa-35' | 'fuji-eterna' | 'panavision-dxl2' | 'leica-sl2s-cine';
+  id: 'neutral' | 'arri-alexa-35' | 'fuji-eterna' | 'panavision-dxl2' | 'leica-sl2s-cine';
   name: string;
   brand: string;
   sensorModel: string;
@@ -90,6 +90,22 @@ export interface ProcessingConfig {
 }
 
 export const CAMERA_PRESETS: CameraPreset[] = [
+  {
+    id: 'neutral',
+    name: 'Neutral Rec.709 (No LUT)',
+    brand: 'Standard',
+    sensorModel: 'Broadcast Rec.709 Natural Color',
+    lutFile: 'neutral_rec709.cube',
+    description: 'Clean video passthrough preserving authentic camera colors without creative grading.',
+    highlightRollOff: 'Original capture dynamic range',
+    dynamicRange: 'Native capture range',
+    colorFoundation: 'Rec.709 standard colorimetry',
+    badge: 'Newsroom Default',
+    swatchColors: ['#06b6d4', '#3b82f6', '#64748b'],
+    defaultGrain: 0,
+    contrastCurve: 'Linear / Rec.709 Standard',
+    gamutSpace: 'BT.709',
+  },
   {
     id: 'arri-alexa-35',
     name: 'ARRI Alexa 35 LogC4',
@@ -239,9 +255,9 @@ export const FRAME_RATE_PRESETS: FrameRatePreset[] = [
     label: '240 FPS',
     standard: 'Extreme High-Speed Slow-Motion',
     category: 'Super Slow-Mo',
-    description: 'Extreme High-Speed Slow-Motion via Bidirectional Optical Flow.',
+    description: 'Extreme High-Speed Slow-Motion via Standard Frame Resampling.',
     shutterAngle: '180° (1/480s Exposure)',
-    motionProfile: '10x ultra slow-motion neural temporal reconstruction via RIFE v4.6',
+    motionProfile: 'High-speed cadence retiming & standard resampling',
     opticalFlowMultiplier: 10.0,
     targetDomain: 'Macro Cinematography & Extreme Slow-Mo FX',
   },

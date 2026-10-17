@@ -9,16 +9,16 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "KosMos AI — Next-Gen AI Video Upscaler & Cinematic Frame Interpolation",
+  title: "KosMos AI — Broadcast Video Upscaler & Frame-Rate Conversion",
   description:
-    "Elevate your video footage to 8K Cinematic clarity and up to 240 FPS smooth motion using state-of-the-art neural upscaling and optical-flow interpolation.",
+    "Elevate video footage up to 8K resolution with professional frame-rate conversion, neural super-resolution, broadcast color science, and verified technical quality control.",
   keywords: [
     "KosMos AI",
     "AI Video Enhancer",
     "Video Upscaler 4K 8K",
-    "Frame Interpolation",
+    "Frame Rate Conversion",
     "Real-ESRGAN",
-    "RIFE Motion Smoothing",
+    "Broadcast Standards",
     "60fps 120fps 240fps"
   ],
   authors: [{ name: "KosMos AI Systems" }],

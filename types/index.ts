@@ -1,3 +1,5 @@
+export * from './media';
+
 export interface HistoryItem {
   id: string;
   filename: string;

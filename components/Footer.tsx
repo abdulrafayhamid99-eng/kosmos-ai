@@ -21,16 +21,16 @@ export default function Footer() {
               </span>
             </div>
             <p className="text-slate-400 text-xs max-w-sm leading-relaxed">
-              Next-Gen AI Video Upscaler & Cinematic Frame Interpolation. Synthesizing missing frames and upscaling to 8K HDR resolution powered by deep neural optical flow.
+              Next-Gen AI Video Upscaler & Broadcast Frame-Rate Conversion. Neural super-resolution up to 8K dimensions and high-framerate conversion engineered for professional workflows.
             </p>
             <div className="flex items-center gap-4 text-[11px] text-slate-500 pt-1">
               <span className="flex items-center gap-1.5 text-emerald-400">
                 <Activity className="w-3.5 h-3.5 animate-pulse" />
-                Cluster: Online (H100 Tensor Nodes)
+                Cluster: Online (GPU Acceleration)
               </span>
               <span className="flex items-center gap-1.5">
                 <Cpu className="w-3.5 h-3.5 text-cyan-400" />
-                Real-ESRGAN + RIFE 4.6
+                Real-ESRGAN + Broadcast Engine
               </span>
             </div>
           </div>

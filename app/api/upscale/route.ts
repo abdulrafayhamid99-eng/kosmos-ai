@@ -11,7 +11,7 @@ export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 // Valid preset identifiers matching Phase 1 broadcast standards
-const CAMERA_PRESET_IDS = ['arri-alexa-35', 'fuji-eterna', 'panavision-dxl2', 'leica-sl2s-cine'] as const;
+const CAMERA_PRESET_IDS = ['neutral', 'arri-alexa-35', 'fuji-eterna', 'panavision-dxl2', 'leica-sl2s-cine'] as const;
 const VALID_FRAME_RATES = [0, 24, 25, 30, 48, 50, 60, 120, 240] as const;
 
 // Strict Zod schema for payload validation
@@ -436,13 +436,14 @@ export async function POST(req: Request) {
       rawPayload.camera_profile ||
       rawPayload.lut ||
       rawPayload.lut_file ||
-      'arri-alexa-35';
+      'neutral';
     let cameraKey = String(rawCam).toLowerCase();
-    if (cameraKey.includes('arri') || cameraKey.includes('alexa')) cameraKey = 'arri-alexa-35';
+    if (cameraKey.includes('neutral') || cameraKey.includes('none') || cameraKey.includes('clean') || cameraKey === 'rec709') cameraKey = 'neutral';
+    else if (cameraKey.includes('arri') || cameraKey.includes('alexa')) cameraKey = 'arri-alexa-35';
     else if (cameraKey.includes('fuji') || cameraKey.includes('eterna')) cameraKey = 'fuji-eterna';
     else if (cameraKey.includes('panavision') || cameraKey.includes('dxl')) cameraKey = 'panavision-dxl2';
     else if (cameraKey.includes('leica') || cameraKey.includes('sl2')) cameraKey = 'leica-sl2s-cine';
-    else cameraKey = 'arri-alexa-35';
+    else cameraKey = 'neutral';
     rawPayload.cameraPresetId = cameraKey;
 
     // Auto-fill lutFile from cameraPresetId
@@ -607,9 +608,9 @@ export async function POST(req: Request) {
       params: {
         videoUrl: data.videoUrl,
         resolution: data.resolution || '4K',
-        fps: data.fps || 60,
-        cameraPresetId: data.cameraPresetId || 'arri-alexa-35',
-        grainLevel: data.grainLevel ?? 15,
+        fps: typeof data.fps === 'number' ? data.fps : 0,
+        cameraPresetId: data.cameraPresetId || 'neutral',
+        grainLevel: data.grainLevel ?? 0,
         fieldMode: data.fieldMode || 'progressive',
         shutterFix: Boolean(data.shutterFix),
         targetGamma: data.targetGamma || 'rec709',
@@ -653,11 +654,11 @@ export async function POST(req: Request) {
       target_resolution: data.resolution || '4K',
       target_fps: typeof data.fps === 'number' ? data.fps : 60,
       fps: typeof data.fps === 'number' ? data.fps : 60,
-      camera_preset_id: data.cameraPresetId || 'arri-alexa-35',
-      camera_profile: data.cameraPresetId || 'arri-alexa-35',
-      lut: data.lutFile || 'ARRI_LogC4_v1_EI0800_WideGamut4.cube',
-      lut_file: data.lutFile || 'ARRI_LogC4_v1_EI0800_WideGamut4.cube',
-      lut_preset: data.cameraPresetId || 'arri-alexa-35',
+      camera_preset_id: data.cameraPresetId || 'neutral',
+      camera_profile: data.cameraPresetId || 'neutral',
+      lut: data.cameraPresetId === 'neutral' ? 'neutral' : (data.lutFile || 'neutral'),
+      lut_file: data.cameraPresetId === 'neutral' ? 'neutral' : (data.lutFile || 'neutral'),
+      lut_preset: data.cameraPresetId || 'neutral',
       grain_level: data.grainLevel ?? 15,
       job_id: jobId,
       field_mode: data.fieldMode || 'progressive',
@@ -673,11 +674,13 @@ export async function POST(req: Request) {
           ? 'x4plus'
           : data.modelTier === 'compact'
             ? 'compact'
-            : (String(rawPayload.enhancementMode || '').toLowerCase().includes('studio') &&
-              !String(rawPayload.enhancementMode || '').toLowerCase().includes('compact') &&
-              !String(rawPayload.enhancementMode || '').toLowerCase().includes('fast'))
-              ? 'x4plus'
-              : 'compact',
+            : data.modelTier === 'auto' || String(rawPayload.enhancementMode || '').toLowerCase().includes('social') || String(rawPayload.enhancementMode || '').toLowerCase().includes('whatsapp')
+              ? 'auto'
+              : (String(rawPayload.enhancementMode || '').toLowerCase().includes('studio') &&
+                !String(rawPayload.enhancementMode || '').toLowerCase().includes('compact') &&
+                !String(rawPayload.enhancementMode || '').toLowerCase().includes('fast'))
+                ? 'x4plus'
+                : 'compact',
       is_preview: Boolean(data.isPreview ?? false),
       unsharp_override: data.unsharpOverride || data.unsharp_override || undefined,
       async_dispatch: true,
@@ -766,7 +769,7 @@ export async function GET() {
     pipelineSpecs: {
       upscaler: 'Real-ESRGAN x4plus (tile=400)',
       faceRestoration: 'GFPGAN v1.4',
-      motionSynthesis: 'RIFE v4.6 (24 to 240 FPS, including 25p PAL and 50p HFR PAL)',
+      motionSynthesis: 'FFmpeg Broadcast Frame-Rate Conversion (Standard Drop / Duplication Cadence)',
       colorEngine: 'FFmpeg 3D LUT (Tetrahedral Interpolation)',
       grainEmulation: 'Kodak 5219 Procedural 35mm Noise',
       scanEngine: 'Hardware Interlace / Progressive Raster Weaving',
