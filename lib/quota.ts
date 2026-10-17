@@ -4,6 +4,14 @@
 // Every logged-in user gets strictly 3 Free Clips every 24 hours.
 // Each free clip is capped at a maximum of 10 seconds of processing.
 
+// Flag to temporarily hide and disable the daily 3-free-renders restriction
+// Can be set to false at any time to immediately restore the 3-per-day limit.
+export const TEMPORARILY_HIDE_DAILY_LIMIT = true;
+
+// Flag to temporarily hide the 10-second video generation restriction for free accounts
+// Can be set to false at any time to restore the 10-second restriction in the UI.
+export const TEMPORARILY_HIDE_DURATION_LIMIT = true;
+
 export const DAILY_FREE_CLIPS_LIMIT = 3;
 export const MAX_CLIP_DURATION_SECONDS = 10;
 export const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000; // 86,400,000 ms
@@ -65,6 +73,18 @@ export function getDailyQuota(userId?: string | null, clerkMetadata?: any): Dail
   }
 
   if (!userId) {
+    if (TEMPORARILY_HIDE_DAILY_LIMIT) {
+      return {
+        freeClipsUsedToday: 0,
+        lastResetTimestamp: now,
+        clipsRemaining: 9999,
+        resetsInFormatted: 'Unlimited',
+        isExhausted: false,
+        maxLimit: 9999,
+        maxSecondsPerClip: MAX_CLIP_DURATION_SECONDS,
+        isDevMode: false,
+      };
+    }
     return {
       freeClipsUsedToday: 0,
       lastResetTimestamp: now,
@@ -125,6 +145,20 @@ export function getDailyQuota(userId?: string | null, clerkMetadata?: any): Dail
         window.dispatchEvent(new Event('kosmos_quota_changed'));
       } catch (e) {}
     }
+  }
+
+  // When daily limit is temporarily hidden/bypassed, preserve usage tracking while reporting unconstrained quota
+  if (TEMPORARILY_HIDE_DAILY_LIMIT) {
+    return {
+      freeClipsUsedToday: usedToday,
+      lastResetTimestamp: resetTimestamp,
+      clipsRemaining: 9999,
+      resetsInFormatted: 'Unlimited',
+      isExhausted: false,
+      maxLimit: 9999,
+      maxSecondsPerClip: MAX_CLIP_DURATION_SECONDS,
+      isDevMode: false,
+    };
   }
 
   const remainingMs = Math.max(0, resetTimestamp + TWENTY_FOUR_HOURS_MS - now);

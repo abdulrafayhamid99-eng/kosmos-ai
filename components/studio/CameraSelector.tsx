@@ -19,29 +19,42 @@ export const CameraSelector: React.FC<CameraSelectorProps> = ({
   onChangeGrain,
   disabled = false,
 }) => {
+  const [activeCategory, setActiveCategory] = React.useState<string>('all');
   const currentPreset = CAMERA_PRESETS.find((p) => p.id === selectedPresetId) || CAMERA_PRESETS[0];
 
+  const categories = [
+    { id: 'all', label: 'All Profiles', count: CAMERA_PRESETS.length },
+    { id: 'cinema', label: 'Cinema Systems', count: CAMERA_PRESETS.filter((p) => p.category === 'cinema').length },
+    { id: 'film', label: 'Film Stocks', count: CAMERA_PRESETS.filter((p) => p.category === 'film').length },
+    { id: 'creative', label: 'Creative Looks', count: CAMERA_PRESETS.filter((p) => p.category === 'creative').length },
+    { id: 'neutral', label: 'Neutral', count: CAMERA_PRESETS.filter((p) => p.category === 'neutral').length },
+  ];
+
+  const filteredPresets = activeCategory === 'all'
+    ? CAMERA_PRESETS
+    : CAMERA_PRESETS.filter((p) => p.category === activeCategory);
+
   return (
-    <div className="w-full space-y-6 rounded-2xl border border-white/10 bg-slate-900/60 p-6 backdrop-blur-xl shadow-2xl transition-all">
+    <div className="w-full space-y-6 rounded-2xl border border-white/10 bg-slate-900/60 p-4 sm:p-6 backdrop-blur-xl shadow-2xl transition-all">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-4">
         <div className="flex items-center space-x-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500/20 via-orange-500/20 to-red-500/20 border border-amber-500/30 text-amber-400 shadow-inner">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500/20 via-orange-500/20 to-red-500/20 border border-amber-500/30 text-amber-400 shadow-inner flex-shrink-0">
             <Camera className="h-5 w-5" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-white tracking-wide flex items-center gap-2">
+            <h3 className="text-base sm:text-lg font-semibold text-white tracking-wide flex items-center flex-wrap gap-2">
               Camera 3D LUT Profiles
-              <span className="text-xs font-mono py-0.5 px-2 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300">
-                True Optical Math
+              <span className="text-[10px] sm:text-xs font-mono py-0.5 px-2 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300">
+                15 Professional Looks
               </span>
             </h3>
             <p className="text-xs text-slate-400">
-              Transform standard dynamic footage into world-class cinema color science.
+              Transform standard dynamic footage with precision tetrahedral 33x33x33 3D LUT color transforms.
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-start sm:self-auto">
           <span className="text-xs text-slate-400 font-mono">Active LUT:</span>
           <span className="text-xs font-mono font-medium text-amber-300 bg-amber-950/40 px-2.5 py-1 rounded-md border border-amber-500/30">
             {currentPreset.lutFile}
@@ -49,9 +62,32 @@ export const CameraSelector: React.FC<CameraSelectorProps> = ({
         </div>
       </div>
 
-      {/* 4 Camera Cards Grid */}
+      {/* Category Filter Tabs */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+        {categories.map((cat) => (
+          <button
+            key={cat.id}
+            type="button"
+            onClick={() => setActiveCategory(cat.id)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+              activeCategory === cat.id
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+                : 'bg-white/5 text-slate-400 hover:text-slate-200 hover:bg-white/10 border border-transparent'
+            }`}
+          >
+            <span>{cat.label}</span>
+            <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+              activeCategory === cat.id ? 'bg-amber-400/20 text-amber-200' : 'bg-white/5 text-slate-500'
+            }`}>
+              {cat.count}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Camera Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {CAMERA_PRESETS.map((preset) => {
+        {filteredPresets.map((preset) => {
           const isSelected = preset.id === selectedPresetId;
 
           return (
@@ -81,6 +117,11 @@ export const CameraSelector: React.FC<CameraSelectorProps> = ({
                   <span className="text-[10px] font-medium text-slate-400 px-1.5 py-0.5 rounded bg-slate-800/80 border border-white/5">
                     {preset.dynamicRange}
                   </span>
+                  {preset.lookType && (
+                    <span className="text-[9px] font-mono font-medium text-amber-300/80 px-1.5 py-0.5 rounded bg-amber-950/30 border border-amber-500/20">
+                      {preset.lookType}
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-1.5">

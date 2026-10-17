@@ -3,6 +3,7 @@
 import React from 'react';
 import { SignInButton } from '@clerk/nextjs';
 import { X, Sparkles, CheckCircle2, Shield } from 'lucide-react';
+import { TEMPORARILY_HIDE_DURATION_LIMIT } from '@/lib/quota';
 
 interface GoogleAuthModalProps {
   isOpen: boolean;
@@ -52,7 +53,14 @@ export default function GoogleAuthModal({
         <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-2.5 text-xs">
           <div className="flex items-center gap-2.5 text-slate-300">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-            <span><strong>3 Free AI Clips (10s each)</strong> every 24 hours</span>
+            <span>
+              {TEMPORARILY_HIDE_DURATION_LIMIT ? (
+                <strong>3 Free AI Clips</strong>
+              ) : (
+                <strong>3 Free AI Clips (10s each)</strong>
+              )}{' '}
+              every 24 hours
+            </span>
           </div>
           <div className="flex items-center gap-2.5 text-slate-300">
             <CheckCircle2 className="w-4 h-4 text-cyan-400 flex-shrink-0" />
@@ -101,7 +109,11 @@ export default function GoogleAuthModal({
 
           <div className="flex items-center justify-center gap-2 pt-2 text-[11px] text-slate-500">
             <Shield className="w-3.5 h-3.5" />
-            <span>Clerk OAuth • 3 free 10-second clips every 24 hours</span>
+            <span>
+              {TEMPORARILY_HIDE_DURATION_LIMIT
+                ? 'Clerk OAuth • 3 free clips every 24 hours'
+                : 'Clerk OAuth • 3 free 10-second clips every 24 hours'}
+            </span>
           </div>
         </div>
 

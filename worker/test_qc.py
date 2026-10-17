@@ -430,18 +430,57 @@ class TestColorAndLutProcessing(unittest.TestCase):
             self.assertIn("0.000000 0.000000 0.000000", data_lines)
             self.assertIn("1.000000 1.000000 1.000000", data_lines)
 
-    def test_pixel_alteration_non_neutral_luts(self):
-        """All creative camera profiles (ARRI, Fuji, Panavision, Leica) must mathematically alter pixels."""
-        test_profiles = ["arri-alexa-35", "fuji-eterna", "panavision-dxl2", "leica-sl2s-cine"]
+    def test_all_15_selectable_profiles_coverage(self):
+        """
+        Verify that all 15 camera LUT profiles (both original and newly added):
+        1. Successfully generate a valid .cube file.
+        2. Neutral preserves exact identity (0.500000 0.500000 0.500000).
+        3. All 14 non-neutral profiles mathematically alter pixels (do not equal identity).
+        """
+        all_15_profiles = [
+            "neutral",
+            "arri-alexa-35",
+            "sony-scinetone",
+            "red-ipp2",
+            "canon-clog",
+            "fuji-eterna",
+            "panasonic-vlog",
+            "blackmagic-film",
+            "kodak-2383",
+            "agfa-vintage",
+            "bleach-bypass",
+            "teal-orange",
+            "monochrome-cinema",
+            "panavision-dxl2",
+            "leica-sl2s-cine",
+        ]
+
         with tempfile.TemporaryDirectory() as tmp_dir:
-            for profile in test_profiles:
+            for profile in all_15_profiles:
                 lut_file = os.path.join(tmp_dir, f"{profile}.cube")
-                generate_cube_lut(lut_file, profile, size=5)
-                with open(lut_file, "r", encoding="utf-8") as f:
+                generated_path = generate_cube_lut(lut_file, profile, size=5)
+                self.assertTrue(os.path.exists(generated_path), f"LUT file was not created for {profile}")
+
+                with open(generated_path, "r", encoding="utf-8") as f:
                     content = f.read()
 
-                # For midtone (0.5, 0.5, 0.5), non-neutral profiles must NOT output exact 0.500000 0.500000 0.500000
-                self.assertNotIn("0.500000 0.500000 0.500000", content, f"Profile {profile} failed to alter midtone pixels!")
+                self.assertIn("LUT_3D_SIZE 5", content, f"Header missing LUT_3D_SIZE for {profile}")
+
+                if profile == "neutral":
+                    self.assertIn("0.500000 0.500000 0.500000", content, "Neutral profile did not preserve identity!")
+                else:
+                    self.assertNotIn(
+                        "0.500000 0.500000 0.500000",
+                        content,
+                        f"Non-neutral profile '{profile}' failed to alter midtone pixels (produced identity)!"
+                    )
+
+    def test_unknown_lut_profile_raises_error(self):
+        """Do not silently fall back to Neutral when a requested profile is invalid; raise ValueError."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            lut_file = os.path.join(tmp_dir, "unknown.cube")
+            with self.assertRaises(ValueError):
+                generate_cube_lut(lut_file, "unknown-unsupported-profile-99")
 
     def test_apply_color_grade_neutral_bypasses_lut3d(self):
         """apply_color_grade_and_grain with neutral profile must NOT add lut3d to filtergraph."""
@@ -494,6 +533,126 @@ class TestColorAndLutProcessing(unittest.TestCase):
                     self.assertIn("tinterlace=mode=interleave_top", filter_graph, "Missing interleave_top filter!")
                     self.assertIn("dejudder=cycle=4", filter_graph, "Missing dejudder filter!")
                     self.assertIn("curves=all=", filter_graph, "Missing flat-log curves filter!")
+
+
+class Test12SecondRegression(unittest.TestCase):
+    """
+    Regression test suite verifying that a ~12-second input at 25 FPS produces
+    an output of approximately 12 seconds at 25 FPS with audio synchronization,
+    and verifying that any truncation (e.g., 2.88s output) is strictly caught.
+    """
+    def setUp(self):
+        self.pipeline = BroadcastEnhancementPipeline()
+
+    def test_twelve_second_25fps_passes_qc_and_audio_sync(self):
+        """
+        Verifies that a 12.195s input normalized to 25 FPS produces ~12.20s output
+        with 305 frames and synchronous audio within documented tolerance (0.25s).
+        """
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+            f.write(b"simulated 12.2s rendered master stream")
+            tmp_path = f.name
+
+        try:
+            source_info = {
+                "width": 480,
+                "height": 854,
+                "fps": 29.355,
+                "r_fps": 29.833,
+                "avg_fps": 29.355,
+                "duration": 12.195,
+                "video_duration": 12.195,
+                "has_audio": True,
+                "audio_duration": 12.077,
+                "is_vfr": True,
+            }
+            # Expected 25 FPS output: 305 frames / 25 FPS = 12.20s
+            mock_output_info = {
+                "width": 3840,
+                "height": 2160,
+                "fps": 25.0,
+                "duration": 12.20,
+                "video_duration": 12.20,
+                "nb_frames": 305,
+                "codec_name": "h264",
+                "has_audio": True,
+                "audio_duration": 12.077,
+            }
+
+            with patch.object(self.pipeline, "inspect_video", return_value=mock_output_info):
+                qc = self.pipeline.run_output_qc(
+                    output_video=tmp_path,
+                    target_w=3840,
+                    target_h=2160,
+                    target_fps=25,
+                    source_info=source_info,
+                    expected_codec="h264"
+                )
+
+            self.assertTrue(qc["passed"], f"QC failed unexpectedly: {qc.get('reasons')}")
+            self.assertTrue(qc["checks"]["durationConsistent"])
+            self.assertTrue(qc["checks"]["audioConsistent"])
+            self.assertTrue(qc["checks"]["audioDurationWithinTolerance"])
+            self.assertTrue(qc["checks"]["frameRateConsistent"])
+            self.assertTrue(qc["checks"]["dimensionsMatch"])
+
+            # Verify documented duration tolerance: delta <= 0.25s
+            duration_delta = abs(mock_output_info["duration"] - source_info["duration"])
+            self.assertLessEqual(duration_delta, 0.25, f"Duration delta {duration_delta}s exceeds 0.25s tolerance")
+
+            # Verify audio/video synchronization drift: <= 0.25s
+            av_drift = abs(mock_output_info["video_duration"] - mock_output_info["audio_duration"])
+            self.assertLessEqual(av_drift, 0.25, f"Audio/video sync drift {av_drift}s exceeds 0.25s tolerance")
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
+    def test_truncated_output_fails_qc(self):
+        """
+        Regression test: If a 12-second input produces only a 2.88-second output
+        (the defect observed in job_1792247770890_dwin018), QC must detect the failure.
+        """
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+            f.write(b"truncated 2.88s media stream")
+            tmp_path = f.name
+
+        try:
+            source_info = {
+                "duration": 12.195,
+                "video_duration": 12.195,
+                "has_audio": True,
+                "audio_duration": 12.077,
+            }
+            # Defect state: 2.88s output with missing audio
+            truncated_output_info = {
+                "width": 3840,
+                "height": 2160,
+                "fps": 25.0,
+                "duration": 2.88,
+                "video_duration": 2.88,
+                "nb_frames": 72,
+                "codec_name": "h264",
+                "has_audio": False,
+                "audio_duration": 0.0,
+            }
+
+            with patch.object(self.pipeline, "inspect_video", return_value=truncated_output_info):
+                qc = self.pipeline.run_output_qc(
+                    output_video=tmp_path,
+                    target_w=3840,
+                    target_h=2160,
+                    target_fps=25,
+                    source_info=source_info,
+                    expected_codec="h264"
+                )
+
+            self.assertFalse(qc["passed"], "QC should have failed for truncated output!")
+            self.assertFalse(qc["checks"]["durationConsistent"], "Duration consistency check should fail for 2.88s vs 12.2s!")
+            self.assertFalse(qc["checks"]["audioConsistent"], "Audio consistency check should fail when audio was stripped!")
+            self.assertTrue(any("Duration drift" in r or "duration" in r.lower() for r in qc["reasons"]))
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
 
 if __name__ == "__main__":

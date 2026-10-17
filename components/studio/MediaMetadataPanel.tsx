@@ -57,14 +57,14 @@ export const MediaMetadataPanel: React.FC<MediaMetadataPanelProps> = ({
             <div>
               <h4 className="text-xs font-bold text-white tracking-wide flex items-center gap-2">
                 Source Video Technical Details
-                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${isProbedByBackend ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/30' : 'bg-slate-800 text-slate-300 border-slate-700'}`}>
-                  {isProbedByBackend ? 'FFprobe Verified' : 'Direct Browser Inspection'}
+                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${isProbedByBackend ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/30' : 'bg-cyan-950/60 text-cyan-300 border-cyan-500/30'}`}>
+                  {isProbedByBackend ? 'FFprobe Verified' : 'Source Media Probed'}
                 </span>
               </h4>
               <p className="text-[10px] text-slate-400">
                 {isProbedByBackend
                   ? 'All stream properties verified directly via server-side container demuxing'
-                  : 'Basic properties measured from uploaded file; deep stream analysis runs on ingest'}
+                  : 'Technical stream properties extracted directly from original media container'}
               </p>
             </div>
           </div>
@@ -99,10 +99,12 @@ export const MediaMetadataPanel: React.FC<MediaMetadataPanelProps> = ({
                 <span className="text-xs font-bold text-cyan-300 font-mono">
                   {video.averageFps
                     ? `${video.averageFps.toFixed(2)} FPS`
-                    : (video.nominalFps ? `${video.nominalFps} FPS` : (isProbedByBackend ? 'Variable' : 'Probed upon ingest'))}
+                    : (video.nominalFps ? `${video.nominalFps.toFixed(2)} FPS` : 'Unavailable')}
                 </span>
-                <span className={`text-[10px] block mt-0.5 font-medium ${isVfr ? 'text-amber-400' : isProbedByBackend ? 'text-emerald-400' : 'text-slate-400'}`}>
-                  {isVfr ? 'Variable (VFR Mobile/WhatsApp)' : isProbedByBackend ? 'Constant (CFR Standard)' : 'Cadence: Ingest Analysis'}
+                <span className={`text-[10px] block mt-0.5 font-medium ${isVfr ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {video.nominalFps && video.averageFps && Math.abs(video.nominalFps - video.averageFps) > 0.05
+                    ? `Nominal: ${video.nominalFps.toFixed(2)} • ${isVfr ? 'VFR' : 'CFR'}`
+                    : (isVfr ? 'Variable Frame Rate (VFR)' : (video.nominalFps || video.averageFps ? 'Constant Frame Rate (CFR)' : 'Cadence: Measured'))}
                 </span>
               </div>
 
@@ -182,7 +184,7 @@ export const MediaMetadataPanel: React.FC<MediaMetadataPanelProps> = ({
                   <span className="font-mono text-slate-200">
                     {container.overallBitrateKbps
                       ? `${Math.round(container.overallBitrateKbps)} kbps`
-                      : (video.bitrateKbps ? `${Math.round(video.bitrateKbps)} kbps` : 'Variable / Not available')}
+                      : (video.bitrateKbps ? `${Math.round(video.bitrateKbps)} kbps` : 'Unavailable')}
                   </span>
                 </div>
               </div>
@@ -203,16 +205,23 @@ export const MediaMetadataPanel: React.FC<MediaMetadataPanelProps> = ({
                 </div>
                 <div className="flex items-center justify-between text-slate-300">
                   <span className="text-slate-500">Camera / Device:</span>
-                  <span className="text-slate-300 truncate max-w-[130px]">
+                  <span
+                    className="text-slate-300 truncate max-w-[180px] text-right"
+                    title={
+                      container.cameraMake || container.cameraModel
+                        ? `${container.cameraMake || ''} ${container.cameraModel || ''}`.trim()
+                        : 'Device information unavailable'
+                    }
+                  >
                     {container.cameraMake || container.cameraModel
                       ? `${container.cameraMake || ''} ${container.cameraModel || ''}`.trim()
-                      : 'Not signaled in metadata'}
+                      : 'Device information unavailable'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-slate-300">
                   <span className="text-slate-500">Recording Date:</span>
-                  <span className="text-slate-400 truncate max-w-[130px]">
-                    {container.creationTime ? new Date(container.creationTime).toLocaleDateString() : 'Not available'}
+                  <span className="text-slate-400 truncate max-w-[180px] text-right">
+                    {container.creationTime ? new Date(container.creationTime).toLocaleString() : 'Unavailable'}
                   </span>
                 </div>
               </div>

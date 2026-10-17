@@ -16,7 +16,10 @@ import {
   isDevelopmentMode,
   DailyQuotaInfo,
   MAX_CLIP_DURATION_SECONDS,
+  TEMPORARILY_HIDE_DAILY_LIMIT,
+  TEMPORARILY_HIDE_DURATION_LIMIT,
 } from '@/lib/quota';
+import { probeVideoFile } from '@/lib/mediaProbe';
 import { downloadEnhancedVideo } from '@/lib/videoExport';
 import { trimVideoForCloudProcessing } from '@/lib/videoTrimmer';
 import {
@@ -450,7 +453,25 @@ export default function Home() {
 
     const objectUrl = URL.createObjectURL(uploadedFile);
     setFilePreviewUrl(objectUrl);
+
+    // Synchronous initial probe for immediate responsiveness
     probeVideoMetadata(uploadedFile.name, uploadedFile.size, uploadedFile.type || 'video/mp4', objectUrl);
+
+    // Deep asynchronous container analysis directly on original uploaded file
+    probeVideoFile(uploadedFile)
+      .then((deepMeta) => {
+        setSourceMediaMetadata(deepMeta);
+        setFileMetadata({
+          name: deepMeta.container.filename,
+          sizeFormatted: deepMeta.container.filesizeFormatted,
+          format: deepMeta.container.formatName || 'MP4',
+          durationFormatted: deepMeta.container.durationFormatted,
+          dimensions: `${deepMeta.video.width}x${deepMeta.video.height}`,
+        });
+      })
+      .catch((err) => {
+        console.warn('[KosMos AI Probe] Detailed media probe fallback:', err);
+      });
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -518,8 +539,8 @@ export default function Home() {
     }
 
     // 2. Daily Free Usage Limit Rule (24-Hour Rolling Window):
-    // In local development / localhost, unlimited clips are allowed
-    if (!isDevelopmentMode()) {
+    // In local development / localhost or when temporarily hidden, daily quota is bypassed
+    if (!isDevelopmentMode() && !TEMPORARILY_HIDE_DAILY_LIMIT) {
       const currentQuota = getDailyQuota(user?.id, user?.unsafeMetadata);
       if (currentQuota.isExhausted || currentQuota.clipsRemaining <= 0) {
         setShowQuotaModal(true);
@@ -529,7 +550,7 @@ export default function Home() {
     }
 
     const cost = isPreview ? 10 : 25;
-    const targetDurationSec = isPreview ? 5 : MAX_CLIP_DURATION_SECONDS;
+    const targetDurationSec = isPreview ? 5 : 0;
 
     setIsProcessing(true);
     setIsRendering(true);
@@ -539,7 +560,7 @@ export default function Home() {
     setCurrentStepText(
       isPreview
         ? 'Preparing 5s sample snippet for Modal Cloud GPU...'
-        : `Preparing ${targetDurationSec}s clip for Modal Cloud GPU...`
+        : 'Preparing full video for Modal Cloud GPU...'
     );
 
     const initialEstSeconds = isPreview ? 25 : 55;
@@ -553,12 +574,21 @@ export default function Home() {
       let response: Response;
 
       if (file) {
-        // Optimize/trim video on client to 5-10s clip to guarantee payload < 4.5MB
-        const payloadFile = await trimVideoForCloudProcessing(
-          file,
-          targetDurationSec,
-          (msg) => setCurrentStepText(msg)
-        );
+        let payloadFile = file;
+        if (isPreview) {
+          payloadFile = await trimVideoForCloudProcessing(
+            file,
+            5,
+            (msg) => setCurrentStepText(msg)
+          );
+        } else if (file.size > 4.2 * 1024 * 1024 && !isDevelopmentMode()) {
+          // In production on Vercel: trim only if file exceeds 4.5MB serverless body limit
+          payloadFile = await trimVideoForCloudProcessing(
+            file,
+            MAX_CLIP_DURATION_SECONDS,
+            (msg) => setCurrentStepText(msg)
+          );
+        }
 
         setCurrentStepText(
           isPreview
@@ -922,41 +952,19 @@ export default function Home() {
               const remainingCreds = commitHeldUserCredits(cost, activeJobId, currentUserId);
               setCredits(remainingCreds);
 
-              // Automatically trigger browser download
-              let resTag = '4k';
-              const rLower = (resultPayload.resolution || resolution).toLowerCase();
-              if (rLower.includes('1080p')) resTag = '1080p';
-              else if (rLower.includes('2k')) resTag = '2k';
-              else if (rLower.includes('8k')) resTag = '8k';
+              // Render finished successfully - result displayed in UI without auto-download (Export button handles download)
+              const quotaMsg = TEMPORARILY_HIDE_DAILY_LIMIT
+                ? ''
+                : ` (${updatedQuota.clipsRemaining}/3 free clips left today)`;
 
-              const fpsCleanTag = (fps.includes('Native') || fps.includes('Original'))
-                ? 'native'
-                : fps.replace(/\s+/g, '').toLowerCase();
-
-              const downloadFilename = isPreview
-                ? `KosMos_Enhanced_preview_${resTag}.mp4`
-                : `KosMos_Enhanced_${resTag}_${fpsCleanTag}.mp4`;
-
-              const autoDownloadUrl = (!isPreview && masterVideoUrl) ? masterVideoUrl : previewVideoUrl;
-
-              try {
-                downloadEnhancedVideo({
-                  videoUrl: autoDownloadUrl,
-                  filename: downloadFilename,
-                });
-              } catch (dlErr) {
-                console.warn('[KosMos AI Engine] Auto download notification:', dlErr);
-              }
-
-              // Show success notification
               showToast(
                 isPreview
-                  ? `5-Second AI Sample rendered & downloaded! (${updatedQuota.clipsRemaining}/3 free clips left today)`
-                  : `Clip Rendered in ${resolution} & downloaded! (${updatedQuota.clipsRemaining}/3 free clips left today)`,
+                  ? `5-Second AI Sample rendered!${quotaMsg}`
+                  : `Clip Rendered in ${resolution}!${quotaMsg}`,
                 'success'
               );
 
-              if (!isDevelopmentMode() && updatedQuota.isExhausted) {
+              if (!isDevelopmentMode() && !TEMPORARILY_HIDE_DAILY_LIMIT && updatedQuota.isExhausted) {
                 setShowQuotaModal(true);
               }
 
@@ -1083,7 +1091,10 @@ export default function Home() {
       : `kosmos-ai-enhanced-${resTag}.mp4`;
 
     setIsDownloading(true);
-    showToast(`Downloading enhanced video (${quota.clipsRemaining}/3 free clips left today)...`, 'info');
+    const dlQuotaMsg = TEMPORARILY_HIDE_DAILY_LIMIT
+      ? ''
+      : ` (${quota.clipsRemaining}/3 free clips left today)`;
+    showToast(`Downloading enhanced video${dlQuotaMsg}...`, 'info');
 
     try {
       await downloadEnhancedVideo({
@@ -1092,8 +1103,11 @@ export default function Home() {
         onProgress: (msg) => showToast(msg, 'info'),
       });
 
+      const successQuotaMsg = TEMPORARILY_HIDE_DAILY_LIMIT
+        ? ''
+        : ` Remaining quota: ${quota.clipsRemaining}/3 free clips today`;
       showToast(
-        `Downloaded ${downloadFilename}! Remaining quota: ${quota.clipsRemaining}/3 free clips today`,
+        `Downloaded ${downloadFilename}!${successQuotaMsg}`,
         'success'
       );
     } catch (err: any) {
@@ -1753,18 +1767,21 @@ export default function Home() {
 
             {/* Launch Action Buttons */}
             <div className="p-6 rounded-3xl bg-gradient-to-r from-slate-900 via-slate-900/90 to-cyan-950/40 border border-slate-800 space-y-4">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400">Daily Free Quota:</span>
-                <span className="font-bold text-white flex items-center gap-1.5">
-                  <span className={`w-2 h-2 rounded-full ${isDevelopmentMode() || quota.clipsRemaining > 0 ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-rose-400 animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.8)]'}`} />
-                  <span className={isDevelopmentMode() || quota.clipsRemaining > 0 ? 'text-cyan-300 font-bold' : 'text-rose-400 font-bold'}>
-                    {isDevelopmentMode() ? 'Unlimited Test Clips (Local Dev Mode)' : `${quota.clipsRemaining}/3 Free Clips Remaining (Max 10s each)`}
+              {/* Daily Free Quota Indicator (Hidden when TEMPORARILY_HIDE_DAILY_LIMIT is active) */}
+              {!TEMPORARILY_HIDE_DAILY_LIMIT && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Daily Free Quota:</span>
+                  <span className="font-bold text-white flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full ${isDevelopmentMode() || quota.clipsRemaining > 0 ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-rose-400 animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.8)]'}`} />
+                    <span className={isDevelopmentMode() || quota.clipsRemaining > 0 ? 'text-cyan-300 font-bold' : 'text-rose-400 font-bold'}>
+                      {isDevelopmentMode() ? 'Unlimited Test Clips (Local Dev Mode)' : TEMPORARILY_HIDE_DURATION_LIMIT ? `${quota.clipsRemaining}/3 Free Clips Remaining` : `${quota.clipsRemaining}/3 Free Clips Remaining (Max 10s each)`}
+                    </span>
                   </span>
-                </span>
-              </div>
+                </div>
+              )}
 
-              {/* Quota Exhausted Warning Banner when 3 of 3 are used (Production only) */}
-              {!isDevelopmentMode() && isSignedIn && quota.isExhausted && (
+              {/* Quota Exhausted Warning Banner when 3 of 3 are used (Production only, hidden when limit is disabled) */}
+              {!TEMPORARILY_HIDE_DAILY_LIMIT && !isDevelopmentMode() && isSignedIn && quota.isExhausted && (
                 <div
                   onClick={() => setShowQuotaModal(true)}
                   className="p-3.5 rounded-2xl bg-rose-950/50 border border-rose-500/40 flex items-center justify-between gap-3 text-xs cursor-pointer hover:bg-rose-950/70 transition shadow-inner group"
@@ -1772,7 +1789,7 @@ export default function Home() {
                   <div className="flex items-center gap-2.5">
                     <AlertTriangle className="w-4 h-4 text-rose-400 flex-shrink-0 animate-pulse" />
                     <p className="text-rose-200 leading-snug">
-                      <strong>Daily Free Limit Reached:</strong> You have used your 3 free clips (10s each) for today. Resets in {quota.resetsInFormatted} or upgrade to continue.
+                      <strong>Daily Free Limit Reached:</strong> You have used your 3 free clips {TEMPORARILY_HIDE_DURATION_LIMIT ? '' : '(10s each) '}for today. Resets in {quota.resetsInFormatted} or upgrade to continue.
                     </p>
                   </div>
                   <span className="text-cyan-300 group-hover:text-cyan-200 underline font-bold whitespace-nowrap text-[11px] flex-shrink-0">
@@ -1843,7 +1860,7 @@ export default function Home() {
                   ) : (
                     <>
                       <Zap className="w-4 h-4 fill-white" />
-                      <span>Render Clip in {resolution} (Max 10s)</span>
+                      <span>{TEMPORARILY_HIDE_DURATION_LIMIT ? `Render Clip in ${resolution}` : `Render Clip in ${resolution} (Max 10s)`}</span>
                     </>
                   )}
                 </button>
@@ -2007,7 +2024,7 @@ export default function Home() {
                         className="w-full py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-bold transition flex items-center justify-center gap-1.5 border border-cyan-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Zap className="w-3.5 h-3.5 fill-cyan-400" />
-                        <span>Render Full Video in {resolution} (Max 10s)</span>
+                        <span>{TEMPORARILY_HIDE_DURATION_LIMIT ? `Render Full Video in ${resolution}` : `Render Full Video in ${resolution} (Max 10s)`}</span>
                       </button>
                     </div>
                   )}
@@ -2123,7 +2140,7 @@ export default function Home() {
                 className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 via-violet-600 to-emerald-500 hover:opacity-95 text-white font-extrabold text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Zap className="w-4 h-4 fill-white" />
-                <span>Render Clip in {resolution} (Max 10s)</span>
+                <span>{TEMPORARILY_HIDE_DURATION_LIMIT ? `Render Clip in ${resolution}` : `Render Clip in ${resolution} (Max 10s)`}</span>
               </button>
 
               <button

@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { X, Sparkles, Clock, ArrowRight, ShieldAlert, Zap } from 'lucide-react';
+import { TEMPORARILY_HIDE_DURATION_LIMIT } from '@/lib/quota';
 
 interface QuotaExhaustedModalProps {
   isOpen: boolean;
@@ -52,7 +53,11 @@ export default function QuotaExhaustedModal({
         {/* Central Notice Box */}
         <div className="p-4 sm:p-5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
           <p className="text-sm font-semibold text-slate-200 leading-relaxed">
-            You have used your <strong>3 free clips (10s each)</strong> for today. Resets in 24 hours or upgrade to continue.
+            {TEMPORARILY_HIDE_DURATION_LIMIT ? (
+              <>You have used your <strong>3 free clips</strong> for today. Resets in 24 hours or upgrade to continue.</>
+            ) : (
+              <>You have used your <strong>3 free clips (10s each)</strong> for today. Resets in 24 hours or upgrade to continue.</>
+            )}
           </p>
           <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-800/80 text-slate-400">
             <span className="flex items-center gap-1.5">
@@ -70,7 +75,9 @@ export default function QuotaExhaustedModal({
           <div className="p-3 rounded-2xl bg-slate-950/60 border border-slate-800/80">
             <span className="text-[10px] text-slate-500 block uppercase font-bold">Free Daily Plan</span>
             <span className="font-bold text-slate-300 block mt-0.5">3 Clips / 24h</span>
-            <span className="text-[11px] text-slate-500 block mt-0.5">Max 10s per clip</span>
+            {!TEMPORARILY_HIDE_DURATION_LIMIT && (
+              <span className="text-[11px] text-slate-500 block mt-0.5">Max 10s per clip</span>
+            )}
           </div>
           <div className="p-3 rounded-2xl bg-gradient-to-tr from-cyan-950/40 to-violet-950/40 border border-cyan-500/30">
             <span className="text-[10px] text-cyan-400 block uppercase font-bold">Pro Creator</span>

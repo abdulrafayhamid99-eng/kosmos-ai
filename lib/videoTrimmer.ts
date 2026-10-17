@@ -10,8 +10,8 @@ export async function trimVideoForCloudProcessing(
   maxDurationSeconds: number = 10,
   onProgress?: (message: string) => void
 ): Promise<File> {
-  // If the file is already small (<= 3.5 MB), no need to re-encode if duration is acceptable
-  if (file.size <= 3.5 * 1024 * 1024 && maxDurationSeconds >= 10) {
+  // If maxDurationSeconds is 0 (full render requested) or file is under Vercel payload limit (<= 4.0 MB) without preview
+  if (maxDurationSeconds <= 0 || (file.size <= 4.0 * 1024 * 1024 && maxDurationSeconds >= 10)) {
     return file;
   }
 
@@ -27,7 +27,9 @@ export async function trimVideoForCloudProcessing(
     const video = document.createElement('video');
     video.src = objectUrl;
     video.crossOrigin = 'anonymous';
-    video.muted = true;
+    // Use near-zero volume instead of muted=true so captureStream preserves audio tracks without blasting sound
+    video.muted = false;
+    video.volume = 0.0001;
     video.playsInline = true;
     video.preload = 'auto';
 
@@ -138,8 +140,8 @@ export async function trimVideoForCloudProcessing(
 
         recorder.start(100);
 
-        // Accelerated playback to extract frames rapidly
-        video.playbackRate = 1.75;
+        // Standard 1.0x playback to ensure MediaRecorder wall-clock timestamps match media duration
+        video.playbackRate = 1.0;
         await video.play().catch(() => {});
 
         let animId: number;

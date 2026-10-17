@@ -108,6 +108,8 @@ def generate_cube_lut(lut_path: str, profile_id: str, size: int = 33) -> str:
         'DOMAIN_MAX 1.0 1.0 1.0',
     ]
 
+    pid = profile_id.lower().replace("_", "-")
+
     for b_idx in range(size):
         b = b_idx / (size - 1)
         for g_idx in range(size):
@@ -115,29 +117,84 @@ def generate_cube_lut(lut_path: str, profile_id: str, size: int = 33) -> str:
             for r_idx in range(size):
                 r = r_idx / (size - 1)
 
-                if profile_id == 'arri-alexa-35':
-                    # ARRI LogC4 curve: smooth highlight compression, extended shoulder, Hollywood skin tone
+                if pid in ('arri-alexa-35', 'arri-alexa', 'arri-logc'):
+                    # 1. ARRI LogC / Alexa-inspired: restrained highlight roll-off and natural skin tones
                     r_out = math.pow(r, 0.92) * 1.02 + 0.012
                     g_out = math.pow(g, 0.94) * 0.98 + 0.010
                     b_out = math.pow(b, 0.98) * 0.92 + 0.008
-                elif profile_id == 'fuji-eterna':
-                    # Fujifilm Eterna: soft shadows, natural skin fidelity, gentle highlight roll-off
+                elif pid in ('sony-scinetone', 'sony-venice', 'sony-slog3'):
+                    # 2. Sony S-Log3 / S-Cinetone-inspired: neutral-to-cinematic color rendition
+                    r_out = math.pow(r, 0.96) * 1.01 + 0.008
+                    g_out = math.pow(g, 0.98) * 0.99 + 0.006
+                    b_out = math.pow(b, 1.02) * 0.96 + 0.005
+                elif pid in ('red-ipp2', 'red-vraptor'):
+                    # 3. RED / IPP2-inspired: controlled contrast and rich but natural colors
+                    r_out = math.pow(r, 1.12) * 1.04 - 0.008
+                    g_out = math.pow(g, 1.10) * 1.01 - 0.008
+                    b_out = math.pow(b, 1.06) * 1.05 - 0.004
+                elif pid in ('canon-clog', 'canon-cinema', 'canon-c500'):
+                    # 4. Canon Cinema / C-Log-inspired: balanced skin tones and cinematic contrast
+                    r_out = math.pow(r, 0.95) * 1.03 + 0.010
+                    g_out = math.pow(g, 0.97) * 0.99 + 0.007
+                    b_out = math.pow(b, 1.04) * 0.92 + 0.004
+                elif pid in ('fuji-eterna', 'fujifilm-gfx', 'fujifilm-eterna'):
+                    # 5. Fujifilm Eterna-inspired: soft contrast and muted cinematic colors
                     r_out = math.pow(r, 1.05) * 0.97 + 0.015
                     g_out = math.pow(g, 1.02) * 0.99 + 0.012
                     b_out = math.pow(b, 1.04) * 0.94 + 0.020
-                elif profile_id == 'panavision-dxl2':
-                    # Light Iron Color 2: High punch, deep shadow clarity, rich cinematic contrast
-                    r_out = math.pow(r, 1.15) * 1.05 - 0.01
-                    g_out = math.pow(g, 1.12) * 1.02 - 0.01
+                elif pid in ('panasonic-vlog', 'panasonic-varicam'):
+                    # 6. Panasonic V-Log / Varicam-inspired: balanced highlights and restrained saturation
+                    r_out = math.pow(r, 0.98) * 1.00 + 0.006
+                    g_out = math.pow(g, 0.99) * 0.99 + 0.006
+                    b_out = math.pow(b, 1.01) * 0.97 + 0.005
+                elif pid in ('blackmagic-film', 'blackmagic-ursa'):
+                    # 7. Blackmagic Film-inspired: filmic contrast and controlled color separation
+                    r_out = math.pow(r, 1.08) * 1.02 - 0.002
+                    g_out = math.pow(g, 1.06) * 1.00 - 0.002
+                    b_out = math.pow(b, 1.03) * 1.04 - 0.001
+                elif pid == 'panavision-dxl2':
+                    # Panavision DXL2: Light Iron Color 2 blockbuster midtone punch
+                    r_out = math.pow(r, 1.15) * 1.05 - 0.010
+                    g_out = math.pow(g, 1.12) * 1.02 - 0.010
                     b_out = math.pow(b, 1.08) * 1.08 - 0.005
-                elif profile_id == 'leica-sl2s-cine':
+                elif pid in ('leica-sl2s-cine', 'leica-sl2s'):
                     # Leica Cine: Rich micro-contrast, organic dense blacks, warm highlights
                     r_out = math.pow(r, 1.10) * 1.04 + 0.005
                     g_out = math.pow(g, 1.08) * 0.98 + 0.004
                     b_out = math.pow(b, 1.12) * 0.95 + 0.002
-                else:
-                    # Neutral Rec.709 transform
+                elif pid in ('kodak-2383', 'kodak-print'):
+                    # 8. Kodak 2383-inspired Print Film: film-print contrast and warm highlights
+                    r_out = math.pow(r, 1.18) * 1.06 - 0.012
+                    g_out = math.pow(g, 1.14) * 0.99 - 0.010
+                    b_out = math.pow(b, 1.10) * 0.92 - 0.005
+                elif pid in ('agfa-vintage', 'agfa-film'):
+                    # 9. Agfa-inspired Vintage Film: subtle vintage color character
+                    r_out = math.pow(r, 1.04) * 0.98 + 0.018
+                    g_out = math.pow(g, 1.02) * 0.97 + 0.015
+                    b_out = math.pow(b, 1.06) * 0.91 + 0.022
+                elif pid in ('bleach-bypass', 'bleach'):
+                    # 10. Bleach Bypass: reduced saturation and stronger contrast
+                    luma = 0.299 * r + 0.587 * g + 0.114 * b
+                    contrast_luma = math.pow(luma, 1.25) * 1.10 - 0.020
+                    r_out = 0.65 * contrast_luma + 0.35 * r
+                    g_out = 0.65 * contrast_luma + 0.35 * g
+                    b_out = 0.65 * contrast_luma + 0.35 * b
+                elif pid in ('teal-orange', 'teal-and-orange'):
+                    # 11. Teal & Orange: restrained cinematic complementary color treatment
+                    luma = 0.299 * r + 0.587 * g + 0.114 * b
+                    r_out = r + 0.10 * (1.0 - luma) * (-0.2) + 0.12 * luma * 0.4
+                    g_out = g + 0.04 * (1.0 - luma) * 0.1
+                    b_out = b + 0.14 * (1.0 - luma) * 0.4 - 0.10 * luma * 0.3
+                elif pid in ('monochrome-cinema', 'monochrome', 'bw-cinema'):
+                    # 12. Monochrome Cinema: carefully balanced black-and-white contrast
+                    luma = 0.2126 * r + 0.7152 * g + 0.0722 * b
+                    mono = math.pow(luma, 1.12) * 1.02
+                    r_out = g_out = b_out = mono
+                elif pid in ('neutral', 'native-clean', 'none', 'native-uncolored'):
+                    # Neutral Rec.709 transform (identity)
                     r_out, g_out, b_out = r, g, b
+                else:
+                    raise ValueError(f"Unknown camera LUT profile ID: '{profile_id}'")
 
                 # Clamp values strictly to [0.0, 1.0]
                 r_out = max(0.0, min(1.0, r_out))
@@ -672,7 +729,8 @@ class BroadcastEnhancementPipeline:
             "-c:a", "copy",
             output_video
         ]
-        subprocess.run(cmd, check=True)
+        proc = subprocess.run(cmd, check=True)
+        print(f"[KosMos Diagnostic] CFR Normalization: exit_code={proc.returncode}, target_fps={target_fps}")
         return output_video
 
     def upscale_video_esrgan(
@@ -897,12 +955,14 @@ class BroadcastEnhancementPipeline:
                 if frame_idx % 30 == 0 or frame_idx == total_frames:
                     print(f"[KosMos Engine] GPU Real-ESRGAN streamed {frame_idx}/{total_frames} frames (FaceRestore={'ACTIVE' if enable_face_restore else 'OFF'})...")
 
+        decoded_frames = 0
         # Read frames from video and stream in batches
         try:
             while True:
                 ret, frame = cap.read()
                 if not ret or frame is None:
                     break
+                decoded_frames += 1
                 frames_batch.append(frame)
                 if len(frames_batch) >= batch_size:
                     process_and_stream_batch(frames_batch)
@@ -919,7 +979,13 @@ class BroadcastEnhancementPipeline:
                     encoder_proc.stdin.close()
             except Exception:
                 pass
-            encoder_proc.wait()
+            encoder_exit_code = encoder_proc.wait()
+
+        self.last_decoded_frames = decoded_frames
+        self.last_processed_frames = frame_idx
+        self.last_encoded_frames = frame_idx
+        self.last_encoder_exit_code = encoder_exit_code
+        print(f"[KosMos Diagnostic] ESRGAN Stage: decoded={decoded_frames}, processed={frame_idx}, encoded={frame_idx}, exit_code={encoder_exit_code}")
 
         if enable_face_restore:
             total_faces = getattr(self, "total_faces_detected", 0)
@@ -983,7 +1049,8 @@ class BroadcastEnhancementPipeline:
             "-pix_fmt", "yuv420p",
             output_video
         ]
-        subprocess.run(ffmpeg_cmd, check=True)
+        proc = subprocess.run(ffmpeg_cmd, check=True)
+        print(f"[KosMos Diagnostic] Frame-Rate Resampling: exit_code={proc.returncode}, target_fps={target_fps}")
         return output_video
 
     def apply_color_grade_and_grain(
@@ -1090,7 +1157,8 @@ class BroadcastEnhancementPipeline:
             "-movflags", "+faststart",
             output_video
         ]
-        subprocess.run(cmd, check=True)
+        proc = subprocess.run(cmd, check=True)
+        print(f"[KosMos Diagnostic] Color Grade & Grain: exit_code={proc.returncode}, filter_graph='{filter_graph}'")
         return output_video
 
     def upload_to_s3(
@@ -1198,6 +1266,9 @@ class BroadcastEnhancementPipeline:
             src_fps = source_info.get("fps", 30.0)
             is_vfr = source_info.get("is_vfr", False)
             is_portrait = src_h > src_w
+
+            raw_size = os.path.getsize(raw_input) if os.path.exists(raw_input) else 0
+            print(f"[KosMos Diagnostic] Stage 1 Input: path={raw_input}, duration={source_info.get('duration'):.3f}s, v_dur={source_info.get('video_duration'):.3f}s, a_dur={source_info.get('audio_duration'):.3f}s, frames={source_info.get('nb_frames')}, fps={src_fps:.2f}, vfr={is_vfr}, audio={source_info.get('has_audio')}, size={raw_size}B")
 
             # Establish consistent CFR frame timeline before GPU processing
             if not target_fps or target_fps <= 0:
@@ -1309,6 +1380,34 @@ class BroadcastEnhancementPipeline:
                 print(f"[KosMos Engine ERROR] {err_msg}")
                 raise RuntimeError(err_msg)
             print("[KosMos Engine] Output QC Gate PASSED all integrity checks.")
+
+            master_size_bytes = os.path.getsize(graded_master) if os.path.exists(graded_master) else 0
+            pipeline_diagnostics = {
+                "job_id": job_id,
+                "input_duration_s": source_info.get("duration", 0.0),
+                "input_video_duration_s": source_info.get("video_duration", 0.0),
+                "input_audio_duration_s": source_info.get("audio_duration", 0.0),
+                "input_fps": source_info.get("fps", 0.0),
+                "input_has_audio": source_info.get("has_audio", False),
+                "input_size_bytes": os.path.getsize(raw_input) if os.path.exists(raw_input) else 0,
+                "cfr_normalized": is_vfr or abs(source_info.get("fps", 0) - effective_fps) >= 0.05,
+                "target_fps": target_fps,
+                "target_resolution": f"{target_w}x{target_h}",
+                "esrgan_decoded_frames": getattr(self, "last_decoded_frames", 0),
+                "esrgan_processed_frames": getattr(self, "last_processed_frames", 0),
+                "esrgan_encoded_frames": getattr(self, "last_encoded_frames", 0),
+                "esrgan_encoder_exit_code": getattr(self, "last_encoder_exit_code", 0),
+                "output_duration_s": final_info.get("duration", 0.0),
+                "output_video_duration_s": final_info.get("video_duration", 0.0),
+                "output_audio_duration_s": final_info.get("audio_duration", 0.0),
+                "output_nb_frames": final_info.get("nb_frames", 0),
+                "output_fps": final_info.get("fps", 0.0),
+                "output_size_bytes": master_size_bytes,
+                "output_has_audio": final_info.get("has_audio", False),
+                "qc_passed": qc_results.get("passed", False),
+            }
+            import json as _json
+            print(f"[KosMos Diagnostic] Final Output ffprobe metadata: {_json.dumps(pipeline_diagnostics)}")
 
             # 5. Generate Fast Streaming Preview Proxy (720p / 2.5 Mbps) for instant client scrubbing
             preview_proxy = os.path.join(temp_dir, "preview_proxy.mp4")
@@ -1468,6 +1567,7 @@ class BroadcastEnhancementPipeline:
                 "qc": qc_results,
                 "source_metadata": source_info,
                 "output_metadata": final_info,
+                "diagnostics": pipeline_diagnostics,
             }
 
         finally:
