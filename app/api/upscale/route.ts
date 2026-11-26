@@ -377,13 +377,15 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
+  const workerConfigured = modalConfigured();
   return NextResponse.json({
     platform: 'KosMos AI',
     service: 'Broadcast Neural Upscaling Dispatcher',
     version: '1.1.0-broadcast-enhancements',
     status: 'operational',
     authentication: 'Clerk v5 Protected',
-    modalConfigured: modalConfigured(),
+    modalConfigured: workerConfigured,
+    renderConfigured: workerConfigured && Boolean(process.env.KOSMOS_DATABASE_URL?.trim()),
     replicateConfigured: !!process.env.REPLICATE_API_TOKEN,
     supportedFieldModes: [
       { id: 'progressive', label: 'Progressive (p)', standard: 'Web / Cinema Master' },

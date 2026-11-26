@@ -36,7 +36,9 @@ KosMos AI is a state-of-the-art neural video enhancement platform engineered for
 
 ## Script Editor
 
-Open `/editor` to build a draft from one local source video, a script with one beat per line, and an aligned SRT or WebVTT transcript. Spoken lines get ranked source ranges with transcript evidence. Mark visual or narration lines with `[B-roll]` or `[VO]` when a human needs to choose a range. Review every script line and confirm the selected clip, set a manual range, or omit the line. Footage is read by the browser during review.
+Open `/editor` to build a draft from one local source video and a script with one beat per line. An optional SRT or WebVTT transcript supplies ranked quote matches and lets you find and assign source cues. Mark visual or narration lines with `[B-roll]` or `[VO]` to review them manually. Move the source playhead to mark in and out points, confirm or omit each line, and reorder the cut. The timeline supports undo and redo during the session.
+
+The browser saves your script, transcript, and timeline on the device. Reconnect the same source file after reopening the editor to preview or export the cut. Select **New project → Clear project** to remove that draft. Download SRT captions to get source cues retimed to the confirmed cut.
 
 If you do not have a transcript, the optional local transcription worker produces one from the source audio. It downloads model weights on first use unless you point it at a local model directory. Review the generated transcript before confirming quotes.
 

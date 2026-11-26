@@ -25,6 +25,7 @@ import { trimVideoForCloudProcessing } from '@/lib/videoTrimmer';
 import { useStudioBalance } from '@/lib/useStudioBalance';
 import {
   UploadCloud,
+  Clapperboard,
   Sparkles,
   Zap,
   Film,
@@ -122,6 +123,20 @@ export default function Home() {
     }
   }, [enhancedVideoUrl]);
   const [renderError, setRenderError] = useState('');
+  const [renderConfigured, setRenderConfigured] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch('/api/upscale', { signal: controller.signal, cache: 'no-store' })
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (!controller.signal.aborted && typeof data?.renderConfigured === 'boolean') {
+          setRenderConfigured(data.renderConfigured);
+        }
+      })
+      .catch(() => { /* The render request will report its own errors. */ });
+    return () => controller.abort();
+  }, []);
   const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' | 'error' } | null>(null);
 
   const showToast = (message: string, type: 'info' | 'success' | 'error' = 'info') => {
@@ -1039,9 +1054,14 @@ export default function Home() {
             <p className="studio-eyebrow"><Film size={15} /> KosMos AI Studio</p>
             <h1 id="studio-title">Restore the footage.<br /><span>Keep the story.</span></h1>
             <p className="studio-intro">Enhance low-resolution video, compare the result against the original, and export a master with measured output specs.</p>
-            <button type="button" className="studio-primary" onClick={() => fileInputRef.current?.click()}>
-              <UploadCloud size={19} /> Upload footage
-            </button>
+            <div className="studio-hero-actions">
+              <button type="button" className="studio-primary" onClick={() => fileInputRef.current?.click()}>
+                <UploadCloud size={18} /> Upload footage
+              </button>
+              <Link href="/editor" className="studio-secondary">
+                <Clapperboard size={18} /> Open Script Editor
+              </Link>
+            </div>
           </div>
           <div className="studio-hero-caption"><span /> Illustrative footage</div>
         </section>
@@ -1557,15 +1577,16 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setIsAdvancedExpanded(!isAdvancedExpanded)}
-                className="w-full p-6 flex items-center justify-between text-left hover:bg-slate-850/40 transition"
+                aria-expanded={isAdvancedExpanded}
+                className="w-full p-4 sm:p-6 flex items-center justify-between gap-2 text-left hover:bg-slate-850/40 transition"
               >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+                  <div className="shrink-0 p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
                     <SlidersHorizontal className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-bold text-white font-display">
+                    <div className="flex flex-wrap items-center gap-1 sm:gap-2">
+                      <h3 className="text-sm sm:text-base font-bold text-white font-display">
                         3. Professional Broadcast & Color Controls
                       </h3>
                       <span className="text-[10px] uppercase font-bold text-amber-400 px-2 py-0.5 bg-amber-950/40 rounded border border-amber-500/30">
@@ -1578,8 +1599,8 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
-                  <span>{isAdvancedExpanded ? 'Collapse' : 'Configure'}</span>
+                <div className="flex shrink-0 items-center gap-2 text-xs font-semibold text-slate-400">
+                  <span className="hidden sm:inline">{isAdvancedExpanded ? 'Collapse' : 'Configure'}</span>
                   {isAdvancedExpanded ? (
                     <ChevronUp className="w-4 h-4 text-slate-400" />
                   ) : (
@@ -1722,6 +1743,13 @@ export default function Home() {
                   )}
                 </button>
               </div>
+
+              {renderConfigured === false && !renderError && (
+                <p className="studio-service-note">
+                  <AlertTriangle size={16} />
+                  <span>Cloud rendering is unavailable on this deployment. You can still review cuts in the <Link href="/editor">Script Editor</Link>.</span>
+                </p>
+              )}
 
               {renderError && (
                 <p role="alert" className="rounded-xl border border-rose-500/30 bg-rose-950/30 p-3 text-xs text-rose-200">

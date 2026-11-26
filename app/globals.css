@@ -238,7 +238,14 @@ html:not(.dark) footer {
   color: #d3dee5;
 }
 
-.studio-primary {
+.studio-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .65rem;
+}
+
+.studio-primary, .studio-secondary {
   display: inline-flex;
   align-items: center;
   gap: .6rem;
@@ -251,6 +258,21 @@ html:not(.dark) footer {
 
 .studio-primary:hover {
   background: #caf8eb;
+}
+
+.studio-secondary {
+  color: #e8f2ef;
+  background: #121e24d9;
+  box-shadow: inset 0 0 0 1px #53706f;
+}
+
+.studio-secondary:hover {
+  background: #243c3b;
+}
+
+.studio-primary:focus-visible, .studio-secondary:focus-visible {
+  outline: 2px solid #a3ead6;
+  outline-offset: 3px;
 }
 
 .studio-hero-caption {
@@ -345,6 +367,8 @@ html:not(.dark) .studio-format {
 
 .studio-monitor {
   display: grid;
+  width: 100%;
+  min-width: 0;
   place-content: center;
   justify-items: center;
   gap: .55rem;
@@ -381,4 +405,33 @@ html:not(.dark) .studio-format {
     max-width: 51rem;
     padding: clamp(2.5rem, 4vw, 3.75rem);
   }
+}
+
+.studio-service-note {
+  display: flex;
+  align-items: flex-start;
+  gap: .55rem;
+  padding: .75rem;
+  border: 1px solid #776039;
+  border-radius: .65rem;
+  background: #302518;
+  color: #ffdda9;
+  font-size: .83rem;
+  line-height: 1.45;
+}
+
+.studio-service-note svg {
+  flex: none;
+  margin-top: .1rem;
+}
+
+.studio-service-note a {
+  text-decoration: underline;
+  text-underline-offset: .2em;
+}
+
+html:not(.dark) .studio-service-note {
+  background: #fff5e4;
+  color: #704915;
+  border-color: #d8b988;
 }

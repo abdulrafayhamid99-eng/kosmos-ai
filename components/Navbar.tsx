@@ -11,12 +11,11 @@ import {
 } from '@clerk/nextjs';
 import {
   Film,
-  Zap,
+  Clapperboard,
   Clock,
   CreditCard,
   Sun,
   Moon,
-  Sparkles,
 } from 'lucide-react';
 import { getDailyQuota, DailyQuotaInfo, TEMPORARILY_HIDE_DAILY_LIMIT } from '@/lib/quota';
 
@@ -76,8 +75,8 @@ export default function Navbar() {
   }, [user]);
 
   const navLinks = [
-    { name: 'Studio', href: '/' },
-    { name: 'Editor', href: '/editor' },
+    { name: 'Studio', href: '/', icon: Film },
+    { name: 'Editor', href: '/editor', icon: Clapperboard },
     { name: 'History', href: '/history', icon: Clock },
     { name: 'Pricing', href: '/pricing', icon: CreditCard },
     { name: 'About', href: '/about' },
@@ -101,19 +100,20 @@ export default function Navbar() {
               </span>
             </div>
             <span className="hidden md:block text-[10px] text-slate-400 tracking-wide">
-              Video enhancement studio
+              Video production workspace
             </span>
           </div>
         </Link>
 
         {/* Navigation Links (Desktop) */}
-        <nav className="hidden md:flex items-center gap-1 bg-slate-900/60 p-1.5 rounded-2xl border border-slate-800/80 text-xs font-medium">
+        <nav aria-label="Main navigation" className="hidden md:flex items-center gap-1 bg-slate-900/60 p-1.5 rounded-2xl border border-slate-800/80 text-xs font-medium">
           {navLinks.map((link) => {
             const isActive = pathname === link.href;
             return (
               <Link
                 key={link.name}
                 href={link.href}
+                aria-current={isActive ? 'page' : undefined}
                 className={`px-3.5 py-1.5 rounded-xl transition flex items-center gap-1.5 ${
                   isActive
                     ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/60'
@@ -168,20 +168,21 @@ export default function Navbar() {
 
       {/* Mobile Secondary Navigation Bar (< md) */}
       <div className="md:hidden border-t border-slate-800/60 bg-slate-950/60 px-3 py-1 flex items-center justify-between gap-1 overflow-x-auto text-[11px]">
-        <nav className="flex items-center gap-1">
+        <nav aria-label="Main navigation" className="flex min-w-0 flex-1 items-center justify-between gap-0.5 sm:justify-start sm:gap-1">
           {navLinks.map((link) => {
             const isActive = pathname === link.href;
             return (
               <Link
                 key={link.name}
                 href={link.href}
+                aria-current={isActive ? 'page' : undefined}
                 className={`px-2 py-0.5 rounded-md transition flex items-center gap-1 font-medium whitespace-nowrap ${
                   isActive
                     ? 'bg-slate-800 text-cyan-400 border border-slate-700/60'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                {link.icon && <link.icon className="w-3 h-3" />}
+                {link.icon && <link.icon className="hidden w-3 h-3 min-[380px]:block" />}
                 {link.name}
               </Link>
             );

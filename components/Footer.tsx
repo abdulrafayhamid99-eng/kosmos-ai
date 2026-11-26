@@ -1,82 +1,34 @@
-'use client';
-
-import React from 'react';
 import Link from 'next/link';
-import { Film, Sparkles, Activity, ShieldCheck, Cpu } from 'lucide-react';
+import { Film } from 'lucide-react';
 
 export default function Footer() {
   return (
-    <footer className="w-full border-t border-slate-900 bg-slate-950/90 text-slate-400 text-xs">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 pb-8 border-b border-slate-900">
-          
-          {/* Brand Col */}
-          <div className="md:col-span-2 space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-gradient-to-tr from-cyan-500 to-violet-500 text-white">
-                <Film className="w-4 h-4" />
-              </div>
-              <span className="font-extrabold text-base tracking-tight text-white font-display">
-                KosMos <span className="text-cyan-400">AI</span>
-              </span>
-            </div>
-            <p className="text-slate-400 text-xs max-w-sm leading-relaxed">
-              Next-Gen AI Video Upscaler & Broadcast Frame-Rate Conversion. Neural super-resolution up to 8K dimensions and high-framerate conversion engineered for professional workflows.
-            </p>
-            <div className="flex items-center gap-4 text-[11px] text-slate-500 pt-1">
-              <span className="flex items-center gap-1.5 text-emerald-400">
-                <Activity className="w-3.5 h-3.5 animate-pulse" />
-                Cluster: Online (GPU Acceleration)
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Cpu className="w-3.5 h-3.5 text-cyan-400" />
-                Real-ESRGAN + Broadcast Engine
-              </span>
-            </div>
-          </div>
-
-          {/* Quick Links */}
-          <div className="space-y-2.5">
-            <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider">Platform</h4>
-            <ul className="space-y-1.5">
-              <li>
-                <Link href="/" className="hover:text-cyan-400 transition">AI Studio Dashboard</Link>
-              </li>
-              <li>
-                <Link href="/history" className="hover:text-cyan-400 transition">Rendering History</Link>
-              </li>
-              <li>
-                <Link href="/pricing" className="hover:text-cyan-400 transition">Credit Packages & Pricing</Link>
-              </li>
-            </ul>
-          </div>
-
-          {/* Legal & Safety */}
-          <div className="space-y-2.5">
-            <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider">Enterprise & Legal</h4>
-            <ul className="space-y-1.5">
-              <li>
-                <Link href="/about" className="hover:text-cyan-400 transition">About KosMos AI</Link>
-              </li>
-              <li>
-                <Link href="/privacy" className="hover:text-cyan-400 transition">Privacy & Data Governance</Link>
-              </li>
-              <li className="flex items-center gap-1 text-[11px] text-slate-500 pt-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-                Zero-Retention Ephemeral Storage
-              </li>
-            </ul>
-          </div>
-
+    <footer className="w-full border-t border-slate-800 bg-slate-950/90 text-sm text-slate-400">
+      <div className="mx-auto grid max-w-7xl gap-7 px-4 py-8 sm:grid-cols-[1.4fr_1fr_1fr] sm:px-6 lg:px-8">
+        <div>
+          <Link href="/" className="inline-flex items-center gap-2 font-bold text-white">
+            <span className="rounded-lg border border-teal-400/40 bg-teal-400/10 p-1.5 text-teal-300"><Film size={16} /></span>
+            KosMos <span className="text-teal-300">AI</span>
+          </Link>
+          <p className="mt-3 max-w-xs text-sm">Video enhancement and script-based editing for production teams.</p>
         </div>
-
-        {/* Bottom bar */}
-        <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-500">
-          <p>© 2026 KosMos AI. All rights reserved.</p>
-          <p className="text-slate-600">
-            Engineered for high-framerate cinematographers, VFX colorists, and digital remastering suites.
-          </p>
-        </div>
+        <nav aria-label="Workspace links" className="space-y-2">
+          <h2 className="font-semibold text-white">Workspace</h2>
+          <ul className="space-y-1.5">
+            <li><Link href="/" className="hover:underline">Enhancement Studio</Link></li>
+            <li><Link href="/editor" className="hover:underline">Script Editor</Link></li>
+            <li><Link href="/history" className="hover:underline">Render history</Link></li>
+          </ul>
+        </nav>
+        <nav aria-label="Company links" className="space-y-2">
+          <h2 className="font-semibold text-white">KosMos AI</h2>
+          <ul className="space-y-1.5">
+            <li><Link href="/pricing" className="hover:underline">Pricing</Link></li>
+            <li><Link href="/about" className="hover:underline">About</Link></li>
+            <li><Link href="/privacy" className="hover:underline">Privacy</Link></li>
+          </ul>
+        </nav>
+        <p className="border-t border-slate-800 pt-4 text-xs sm:col-span-3">© 2026 KosMos AI</p>
       </div>
     </footer>
   );
