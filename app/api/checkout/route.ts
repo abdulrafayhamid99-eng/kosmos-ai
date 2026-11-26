@@ -1,79 +1,49 @@
+import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
+import { studioPlan } from '@/lib/studioPlans';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { credits = 100, planName = 'Creator Pack', priceUsd = 9, userId, userEmail, isSubscription = false } = body;
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ error: 'Sign in to buy credits.' }, { status: 401 });
 
-    const origin = req.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    const stripeKey = process.env.STRIPE_SECRET_KEY?.trim();
+    const { planId } = await req.json().catch(() => ({}));
+    const plan = studioPlan(planId);
+    if (!plan) return NextResponse.json({ error: 'Choose an available credit plan.' }, { status: 400 });
 
-    // Standardized unit amount in cents (USD)
-    const unitAmountCents = Math.round(Number(priceUsd) * 100);
-
-    // If Stripe Secret Key is present and valid, create a genuine Stripe Checkout Session
-    if (stripeKey && !stripeKey.includes('placeholder') && stripeKey.startsWith('sk_')) {
-      const stripe = new Stripe(stripeKey, {
-        apiVersion: '2024-04-10' as any,
-      });
-
-      const session = await stripe.checkout.sessions.create({
-        customer_email: userEmail || undefined,
-        line_items: [
-          {
-            price_data: {
-              currency: 'usd',
-              product_data: {
-                name: `KosMos AI: ${planName} (+${credits} Credits)`,
-                description: `Neural video upscaling and frame interpolation compute bundle. Adds ${credits} credits to account.`,
-              },
-              unit_amount: unitAmountCents,
-            },
-            quantity: 1,
-          },
-        ],
-        mode: isSubscription ? 'subscription' : 'payment',
-        success_url: `${origin}/pricing?payment_status=success&session_id={CHECKOUT_SESSION_ID}&credits=${credits}&plan=${encodeURIComponent(planName)}`,
-        cancel_url: `${origin}/pricing?payment_status=cancelled`,
-        metadata: {
-          userId: userId || 'guest',
-          userEmail: userEmail || '',
-          creditsToAdd: String(credits),
-          planName: planName,
-        },
-        client_reference_id: userId || undefined,
-      });
-
-      return NextResponse.json({
-        success: true,
-        url: session.url,
-        sessionId: session.id,
-      });
+    const key = process.env.STRIPE_SECRET_KEY;
+    const site = process.env.NEXT_PUBLIC_APP_URL;
+    if (!key || !site || !process.env.STRIPE_WEBHOOK_SECRET) {
+      return NextResponse.json({ error: 'Checkout is currently unavailable.' }, { status: 503 });
     }
 
-    // Graceful developer & test fallback when live Stripe keys are not yet added to .env.local
-    // Provides instant checkout redirection with full credit synchronization
-    const mockSessionId = `kosmos_cs_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    const redirectUrl = `${origin}/pricing?payment_status=success&session_id=${mockSessionId}&credits=${credits}&plan=${encodeURIComponent(planName)}&simulated=true`;
-
-    return NextResponse.json({
-      success: true,
-      url: redirectUrl,
-      sessionId: mockSessionId,
-      notice: 'Simulated checkout session (Configure STRIPE_SECRET_KEY in .env.local for production card billing)',
+    const stripe = new Stripe(key);
+    const origin = new URL(site).origin;
+    const metadata = { userId, planId };
+    const session = await stripe.checkout.sessions.create({
+      mode: plan.interval ? 'subscription' : 'payment',
+      client_reference_id: userId,
+      metadata,
+      subscription_data: plan.interval ? { metadata } : undefined,
+      line_items: [{
+        price_data: {
+          currency: 'usd',
+          product_data: { name: `KosMos AI · ${plan.name}` },
+          unit_amount: plan.cents,
+          recurring: plan.interval ? { interval: plan.interval } : undefined,
+        },
+        quantity: 1,
+      }],
+      success_url: `${origin}/pricing?payment_status=success`,
+      cancel_url: `${origin}/pricing?payment_status=cancelled`,
     });
-
-  } catch (error: any) {
-    console.error('[Checkout API Error]:', error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error?.message || 'Failed to initialize payment checkout session',
-      },
-      { status: 500 }
-    );
+    if (!session.url) return NextResponse.json({ error: 'Checkout is currently unavailable.' }, { status: 502 });
+    return NextResponse.json({ success: true, url: session.url });
+  } catch (error) {
+    console.error('[Checkout]', error);
+    return NextResponse.json({ error: 'Checkout is currently unavailable.' }, { status: 503 });
   }
 }

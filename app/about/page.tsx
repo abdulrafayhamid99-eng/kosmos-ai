@@ -25,7 +25,7 @@ export default function AboutPage() {
           </h1>
 
           <p className="mt-4 text-sm sm:text-base text-slate-400 leading-relaxed">
-            Next-Gen AI Video Upscaler & Cinematic Frame Interpolation. Built for digital cinematographers, broadcast editors, archival remastering, and modern creators.
+            AI video enhancement for newsroom teams, archive editors, and creators.
           </p>
         </div>
 
@@ -41,7 +41,7 @@ export default function AboutPage() {
               <h2 className="text-xl font-bold text-white font-display">Our Mission</h2>
             </div>
             <p className="text-sm text-slate-300 leading-relaxed">
-              Every day, post-production teams receive low-resolution footage, highly compressed smartphone video, or vintage 24fps film scans that struggle to display cleanly on modern 4K and 8K displays. KosMos AI was created to eliminate this limitation. By leveraging state-of-the-art neural optical flow models and deep generative texture synthesis, KosMos AI restores lost fidelity, eliminates compression macroblocks, and renders ultra-fluid motion up to 240 FPS.
+              Enhance mobile, compressed, and archival clips with Real-ESRGAN on a cloud GPU. Compare each render with the source and inspect the final file’s dimensions, cadence, and codec.
             </p>
           </div>
 
@@ -53,7 +53,7 @@ export default function AboutPage() {
               </div>
               <h3 className="text-base font-bold text-white font-display">Broadcast Frame-Rate Conversion</h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Engineered for newsroom, archival, and streaming workflows, KosMos AI provides standards-compliant frame-rate conversion, CFR timeline stabilization, and temporal smoothing across cinematic and broadcast standards.
+                Convert to a target frame rate with FFmpeg resampling and normalize variable frame timing for delivery.
               </p>
             </div>
 
@@ -63,7 +63,7 @@ export default function AboutPage() {
               </div>
               <h3 className="text-base font-bold text-white font-display">Broadcast Quality Assurance</h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                We adhere to rigorous color space compliance standards, guaranteeing that contrast, HDR gamma curves, and Rec.709/Rec.2020 color metadata remain completely uncorrupted.
+                The worker checks output dimensions, frame timing, audio, codec, and full decode before returning a master file.
               </p>
             </div>
           </div>
@@ -73,7 +73,7 @@ export default function AboutPage() {
             <div>
               <h3 className="text-lg font-bold text-white font-display">Experience KosMos AI Today</h3>
               <p className="text-xs text-slate-400 mt-1">
-                Enhance your first video sample in under 3 seconds directly in our interactive studio.
+                Upload a clip to compare a render with the original.
               </p>
             </div>
             <Link

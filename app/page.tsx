@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import ComparisonSlider, { CAMERA_PROFILES } from '@/components/ComparisonSlider';
+import ComparisonSlider from '@/components/ComparisonSlider';
 import RefillModal from '@/components/RefillModal';
 import GoogleAuthModal from '@/components/GoogleAuthModal';
 import QuotaExhaustedModal from '@/components/QuotaExhaustedModal';
@@ -22,14 +22,7 @@ import {
 import { probeVideoFile } from '@/lib/mediaProbe';
 import { downloadEnhancedVideo } from '@/lib/videoExport';
 import { trimVideoForCloudProcessing } from '@/lib/videoTrimmer';
-import {
-  getUserCredits,
-  setUserCredits,
-  deductUserCredits,
-  holdUserCredits,
-  commitHeldUserCredits,
-  releaseHeldUserCredits,
-} from '@/lib/credits';
+import { useStudioBalance } from '@/lib/useStudioBalance';
 import {
   UploadCloud,
   Sparkles,
@@ -72,7 +65,7 @@ export default function Home() {
 
   // Enhancement Configuration
   const [outputGoal, setOutputGoal] = useState<'standard' | 'upscale' | 'advanced'>('upscale');
-  const [resolution, setResolution] = useState<'1080p Full HD' | '2K DCI (2048×1080)' | '4K Ultra HD' | '8K Cinematic' | string>('4K Ultra HD');
+  const [resolution, setResolution] = useState<'1080p Full HD' | '2K QHD (2560×1440)' | '4K Ultra HD' | '8K Cinematic' | string>('4K Ultra HD');
   const [fps, setFps] = useState<string>('Original Source FPS (Keep Native)');
   const [cameraProfile, setCameraProfile] = useState<string>('neutral');
   const [fieldMode, setFieldMode] = useState<FieldScanMode>('progressive');
@@ -97,7 +90,7 @@ export default function Home() {
   const [showQuotaModal, setShowQuotaModal] = useState<boolean>(false);
 
   // Credits & UI State
-  const [credits, setCredits] = useState<number>(100);
+  const { credits, refresh: refreshCredits } = useStudioBalance(user?.id);
   const [showRefillModal, setShowRefillModal] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [isRendering, setIsRendering] = useState<boolean>(false);
@@ -111,7 +104,7 @@ export default function Home() {
 
   const [showGoogleAuthModal, setShowGoogleAuthModal] = useState<boolean>(false);
   const [authModalSubtitle, setAuthModalSubtitle] = useState<string>(
-    'Sign in with Google to activate your 3 daily free AI clips & save project history'
+    'Sign in to render a short preview and manage your exports.'
   );
 
   // Rendered Output State
@@ -195,10 +188,10 @@ export default function Home() {
   const enhancementPresets = [
     {
       id: 'social_whatsapp',
-      title: 'Social/WhatsApp Restoration',
-      fullTitle: 'Social/WhatsApp Restoration (Denoise + Face Clarity + 1080p)',
-      subtitle: 'Removes compression macroblocks, noise banding, and restores facial micro-details.',
-      badge: 'Denoise + Face Clarity',
+      title: 'Compressed Footage',
+      fullTitle: 'Compressed Footage (1080p)',
+      subtitle: '1080p enhancement for mobile and highly compressed footage.',
+      badge: '1080p • Source cadence',
       defaultRes: '1080p Full HD' as const,
       defaultFps: 'Original Source FPS (Keep Native)',
       accent: 'border-emerald-500/60 bg-emerald-950/20 text-emerald-400',
@@ -206,9 +199,9 @@ export default function Home() {
     {
       id: 'cinematic_motion',
       title: 'Cinematic Motion',
-      fullTitle: 'Cinematic Motion (Frame Interpolation to 60/120 FPS)',
-      subtitle: 'RIFE optical flow intermediate motion vector synthesis for butter-smooth fluidity.',
-      badge: 'Frame Interpolation',
+      fullTitle: 'Cinematic Motion (60 FPS resampling)',
+      subtitle: 'Convert the output cadence to 60 FPS through frame resampling.',
+      badge: '60 FPS resampling',
       defaultRes: '4K Ultra HD' as const,
       defaultFps: '60 FPS',
       accent: 'border-cyan-500/60 bg-cyan-950/20 text-cyan-400',
@@ -217,7 +210,7 @@ export default function Home() {
       id: 'studio_4k',
       title: 'Studio 4K Remaster',
       fullTitle: 'Studio 4K Remaster (Super-Resolution 4K + 60 FPS)',
-      subtitle: 'Chained Step 1 (Real-ESRGAN texture synthesis) + Step 2 (60 FPS motion smoothness).',
+      subtitle: 'Real-ESRGAN enhancement with 60 FPS resampling.',
       badge: 'Super-Res 4K + 60 FPS',
       defaultRes: '4K Ultra HD' as const,
       defaultFps: '60 FPS',
@@ -225,10 +218,10 @@ export default function Home() {
     },
     {
       id: 'phantom_slowmo',
-      title: 'Extreme Phantom Slow-Mo',
-      fullTitle: 'Extreme Phantom Slow-Mo (240 FPS High-Speed Flow)',
-      subtitle: '10x deep temporal synthesis producing high-speed cinema sequences from 24fps clips.',
-      badge: '240 FPS High-Speed Flow',
+      title: 'High Frame Rate',
+      fullTitle: 'High Frame Rate (240 FPS resampling)',
+      subtitle: 'Resamples the clip to 240 FPS using frame repetition or dropping.',
+      badge: '240 FPS resampling',
       defaultRes: '4K Ultra HD' as const,
       defaultFps: '240 FPS',
       accent: 'border-rose-500/60 bg-rose-950/20 text-rose-400',
@@ -236,20 +229,7 @@ export default function Home() {
   ];
 
 
-  // Sync user credits from local storage / user ID
-  useEffect(() => {
-    const updateCredits = () => {
-      const userCreds = getUserCredits(currentUserId);
-      setCredits(userCreds);
-    };
-    updateCredits();
-    window.addEventListener('kosmos_credits_changed', updateCredits);
-    window.addEventListener('storage', updateCredits);
-    return () => {
-      window.removeEventListener('kosmos_credits_changed', updateCredits);
-      window.removeEventListener('storage', updateCredits);
-    };
-  }, [currentUserId]);
+
 
   // Sync 24-Hour Daily Free Quota with Clerk & LocalStorage
   useEffect(() => {
@@ -270,6 +250,7 @@ export default function Home() {
   // Recover active job after page refresh
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (!isSignedIn) return;
     const activeJobId = localStorage.getItem('kosmos_active_job_id');
     if (!activeJobId) return;
 
@@ -349,7 +330,7 @@ export default function Home() {
     };
     checkActiveJob();
     return () => { isMounted = false; };
-  }, []);
+  }, [isSignedIn]);
 
   // Format seconds to mm:ss
   const formatDuration = (seconds: number) => {
@@ -382,64 +363,17 @@ export default function Home() {
 
     tempVideo.onloadedmetadata = () => {
       const dur = tempVideo.duration || 0;
-      const w = tempVideo.videoWidth || 1920;
-      const h = tempVideo.videoHeight || 1080;
+      const w = tempVideo.videoWidth;
+      const h = tempVideo.videoHeight;
       const durFormatted = formatDuration(dur);
-      const isPortrait = h > w;
-      const dar = isPortrait ? `${(w / h).toFixed(2)}:1 (Portrait)` : `${(w / h).toFixed(2)}:1 (Landscape)`;
-
       setFileMetadata({
         name: fileName,
         sizeFormatted,
         format: fileType || 'video/mp4',
         durationFormatted: durFormatted,
-        dimensions: `${w}x${h}`,
+        dimensions: w && h ? `${w}x${h}` : 'Unknown',
       });
 
-      const srcMeta: SourceMediaMetadata = {
-        container: {
-          filename: fileName,
-          filesizeBytes: fileSizeBytes,
-          filesizeFormatted: sizeFormatted,
-          formatName: fileType ? fileType.replace('video/', '').toUpperCase() : 'MP4',
-          durationSeconds: dur,
-          durationFormatted: durFormatted,
-          overallBitrateKbps: dur > 0 ? (fileSizeBytes * 8) / (dur * 1000) : undefined,
-        },
-        video: {
-          width: w,
-          height: h,
-          displayAspectRatio: dar,
-          sampleAspectRatio: '1:1',
-          codecName: fileType.includes('quicktime') ? 'H.264 / ProRes (MOV)' : 'H.264 / AVC (MP4)',
-          codecProfile: undefined,
-          pixelFormat: 'yuv420p (standard)',
-          bitDepth: 8,
-          nominalFps: undefined,
-          averageFps: undefined,
-          isVfr: undefined,
-          durationSeconds: dur,
-          scanMode: 'progressive',
-          fieldOrder: 'progressive',
-          colorPrimaries: 'Rec.709',
-          colorTransfer: 'bt709',
-          colorMatrix: 'bt709',
-          colorRange: 'tv',
-          hdrSignaling: 'SDR (Standard Dynamic)',
-          rotationDegrees: 0,
-          sourceLutEmbedded: 'None detected in source container tags',
-        },
-        audio: {
-          hasAudio: true,
-          codecName: 'AAC (Stereo)',
-          channels: 2,
-          sampleRateHz: 48000,
-          durationSeconds: dur,
-        },
-        isProbed: true,
-        probeSource: 'browser_inspection',
-      };
-      setSourceMediaMetadata(srcMeta);
     };
   };
 
@@ -529,7 +463,7 @@ export default function Home() {
     }
 
     // 1. If user is not logged in: Prompt Google Sign-In when clicking preview or render (bypassed in dev mode)
-    if (!isSignedIn && !isDevelopmentMode()) {
+    if (!isSignedIn) {
       if (openSignIn) {
         openSignIn();
       } else {
@@ -549,7 +483,6 @@ export default function Home() {
       }
     }
 
-    const cost = isPreview ? 10 : 25;
     const targetDurationSec = isPreview ? 5 : 0;
 
     setIsProcessing(true);
@@ -655,6 +588,7 @@ export default function Home() {
         } catch {
           errMessage = await response.text();
         }
+        if (response.status === 402) setShowRefillModal(true);
         throw new Error(errMessage || `Cloud GPU responded with status ${response.status}`);
       }
 
@@ -687,8 +621,7 @@ export default function Home() {
         localStorage.setItem('kosmos_active_job_id', activeJobId);
       }
 
-      // Reserve credits locally on job start
-      holdUserCredits(cost, activeJobId, currentUserId);
+      void refreshCredits();
 
       // Initial progress update from dispatch
       setProgressPercent(10);
@@ -764,8 +697,8 @@ export default function Home() {
               const result = statusData.result || {};
               const masterVideoUrl =
                 data.master_video_url ||
-                result.video_base64 ||
-                result.videoBase64 ||
+                result.master_video_data ||
+                result.master_video_url ||
                 result.masterUrl ||
                 result.masterVideoUrl ||
                 result.masterVideoData ||
@@ -778,6 +711,7 @@ export default function Home() {
                 data.preview_url ||
                 data.video_url ||
                 result.preview_video_data ||
+                result.preview_url ||
                 result.previewVideoData ||
                 result.previewUrl ||
                 result.streamUrl ||
@@ -802,8 +736,18 @@ export default function Home() {
               setIsProcessing(false);
               if (intervalId) clearInterval(intervalId);
 
-              const processingTimeFormatted = result.processingTimeFormatted || '4.2s';
-
+              const media = result.output_metadata;
+              const qc = result.qc;
+              const appliedCamera = CAMERA_PRESETS.find((preset) => preset.id === result.cameraPreset);
+              const processingTimeMs = result.processingTimeMs;
+              const processingTimeFormatted = typeof processingTimeMs === 'number'
+                ? `${(processingTimeMs / 1000).toFixed(1)}s`
+                : result.processingTimeFormatted || 'Time unavailable';
+              const measuredResolution = media?.width && media?.height
+                ? `${media.width} × ${media.height}`
+                : result.outputResolution;
+              const measuredFps = media?.fps ?? result.fps;
+              const fpsLabel = typeof measuredFps === 'number' ? `${Number(measuredFps.toFixed(3))} FPS` : 'FPS unavailable';
               const resultPayload = {
                 videoUrl: previewVideoUrl,
                 previewUrl: previewVideoUrl,
@@ -812,145 +756,117 @@ export default function Home() {
                 downloadUrl: masterVideoUrl,
                 originalVideoUrl: filePreviewUrl || demoSamples[0].url,
                 processingTimeFormatted,
-                resolution: resolution,
-                outputResolution: result.outputResolution || (resolution.includes('8K') ? '7680x4320 (8K Cinematic)' : resolution.includes('2K') ? '2048x1080 (2K DCI)' : '3840x2160 (4K Ultra HD)'),
-                fps: fps,
+                resolution,
+                outputResolution: measuredResolution || 'Dimensions unavailable',
+                fps: fpsLabel,
                 preset: enhancementMode,
-                cameraProfile: cameraProfile,
-                fieldMode: fieldMode,
-                shutterFix: shutterFix,
-                targetGamma: targetGamma,
-                isPreview: !!isPreview,
-                outputFileSizeFormatted: result.outputFileSizeFormatted || (isPreview ? '8.4 MB' : '58.4 MB'),
-                previewFileSizeFormatted: result.previewFileSizeFormatted || '2.5 MB',
-                stats: {
-                  framesSynthesized: fps.includes('240') ? 1440 : fps.includes('120') ? 720 : 360,
-                  scaleFactor: resolution.includes('8K') ? '8x Neural Super-Res' : resolution.includes('2K') ? '2K DCI Master' : '4x Ultra HD',
-                  codec: 'H.264 / AVC High@L5.1',
-                  bitrate: resolution.includes('8K') ? '82.4 Mbps' : '48.2 Mbps',
-                  cameraProfile: cameraProfile,
-                  fieldScan: fieldMode === 'interlaced-tff' ? '1080i TFF (Upper Field First)' : fieldMode === 'interlaced-bff' ? '1080i BFF (Lower Field First)' : 'Progressive (1p)',
-                  universalShutter: shutterFix ? 'Dejudder & Cadence Smoothing (Active)' : 'Native Rolling Shutter',
-                  colorCurve: targetGamma === 'flat-log' ? 'Flat Log Pre-Grade Curve' : 'Standard Rec.709',
-                  outputFileSize: result.outputFileSizeFormatted || (isPreview ? '8.4 MB' : '58.4 MB'),
-                  outputResolution: result.outputResolution || (resolution.includes('8K') ? '7680x4320 (8K Cinematic)' : resolution.includes('2K') ? '2048x1080 (2K DCI)' : '3840x2160 (4K Ultra HD)'),
-                },
+                cameraProfile: appliedCamera?.id,
+                fieldMode: result.fieldMode,
+                shutterFix: result.shutterFix,
+                targetGamma: result.targetGamma,
+                isPreview: Boolean(isPreview),
+                outputFileSizeFormatted: result.outputFileSizeFormatted || 'Size unavailable',
+                previewFileSizeFormatted: result.previewFileSizeFormatted,
+                stats: result.diagnostics,
               };
-
               setProcessedResult(resultPayload);
 
-              // Construct verified RenderedMediaMetadata facts panel
-              const actualW = parseInt((resultPayload.outputResolution || '').split('x')[0], 10) || 3840;
-              const actualH = parseInt((resultPayload.outputResolution || '').split('x')[1], 10) || 2160;
-
-              const outMeta: RenderedMediaMetadata = {
-                container: {
-                  filename: isPreview ? `kosmos-enhanced-preview-${resolution.toLowerCase().replace(/[^a-z0-9]/g, '')}.mp4` : `kosmos-enhanced-${resolution.toLowerCase().replace(/[^a-z0-9]/g, '')}.mp4`,
-                  filesizeBytes: result.master_file_size_bytes || 58400000,
-                  filesizeFormatted: resultPayload.outputFileSizeFormatted || '58.4 MB',
-                  formatName: 'MP4 (MPEG-4 AVC High@L5.1 / AAC)',
-                  durationSeconds: isPreview ? 5.0 : (sourceMediaMetadata?.container.durationSeconds || 10.0),
-                  durationFormatted: isPreview ? '00:05' : (sourceMediaMetadata?.container.durationFormatted || '00:10'),
-                  overallBitrateKbps: 48200,
-                },
-                video: {
-                  width: actualW,
-                  height: actualH,
-                  displayAspectRatio: `${(actualW / actualH).toFixed(2)}:1`,
-                  sampleAspectRatio: '1:1',
-                  codecName: 'H.264 / AVC High@L5.1',
-                  codecProfile: 'High@L5.1',
-                  pixelFormat: 'yuv420p',
-                  bitDepth: 8,
-                  nominalFps: parseInt(resultPayload.fps, 10) || 60,
-                  averageFps: parseInt(resultPayload.fps, 10) || 60,
-                  isVfr: false,
-                  durationSeconds: isPreview ? 5.0 : (sourceMediaMetadata?.container.durationSeconds || 10.0),
-                  colorPrimaries: 'Rec.709',
-                  colorTransfer: 'bt709',
-                  colorMatrix: 'bt709',
-                  colorRange: 'tv',
-                  scanMode: fieldMode.includes('interlaced') ? 'interlaced' : 'progressive',
-                  fieldOrder: fieldMode === 'interlaced-tff' ? 'tff' : fieldMode === 'interlaced-bff' ? 'bff' : 'progressive',
-                },
-                audio: {
-                  hasAudio: sourceMediaMetadata?.audio.hasAudio ?? true,
-                  codecName: 'AAC (Stereo)',
-                  channels: 2,
-                  sampleRateHz: 48000,
-                },
-                aspectRatioHandling: 'preserved',
-                comparison: {
-                  resolution: {
-                    requested: resolution,
-                    actual: resultPayload.outputResolution || resolution,
-                    match: true,
+              if (media?.width && media?.height && qc?.checks && Array.isArray(qc.reasons)) {
+                const duration = media.duration;
+                const durationFormatted = typeof duration === 'number'
+                  ? `${Math.floor(duration / 60)}:${String(Math.floor(duration % 60)).padStart(2, '0')}`
+                  : 'Unavailable';
+                const aspect = media.width / media.height;
+                const source = result.source_metadata;
+                const aspectPreserved = source?.width > 0 && source?.height > 0
+                  && Math.abs(source.width / source.height - aspect) < 0.02;
+                const actualScan = media.field_order === 'tff' ? 'Interlaced TFF'
+                  : media.field_order === 'bff' ? 'Interlaced BFF'
+                  : media.scan_mode === 'progressive' ? 'Progressive' : 'Unconfirmed';
+                const outMeta: RenderedMediaMetadata = {
+                  container: {
+                    filename: isPreview ? 'kosmos-preview.mp4' : 'kosmos-master.mp4',
+                    filesizeBytes: result.master_file_size_bytes ?? media.size_bytes ?? 0,
+                    filesizeFormatted: resultPayload.outputFileSizeFormatted,
+                    formatName: media.format_name,
+                    durationSeconds: duration,
+                    durationFormatted,
+                    overallBitrateKbps: typeof media.bit_rate === 'number' ? Math.round(media.bit_rate / 1000) : undefined,
                   },
-                  frameRate: {
-                    requested: fps,
-                    actual: resultPayload.fps,
-                    mode: 'resampling',
-                    match: true,
+                  video: {
+                    width: media.width,
+                    height: media.height,
+                    displayAspectRatio: media.display_aspect_ratio,
+                    sampleAspectRatio: media.sample_aspect_ratio,
+                    codecName: media.codec_name,
+                    codecProfile: media.codec_profile,
+                    pixelFormat: media.pix_fmt,
+                    bitDepth: media.bit_depth,
+                    nominalFps: media.fps,
+                    averageFps: media.avg_fps,
+                    isVfr: media.is_vfr,
+                    frameCount: media.nb_frames,
+                    durationSeconds: media.video_duration,
+                    colorPrimaries: media.color_primaries,
+                    colorTransfer: media.color_transfer,
+                    colorMatrix: media.color_matrix,
+                    colorRange: media.color_range,
+                    scanMode: media.scan_mode,
+                    fieldOrder: media.field_order,
                   },
-                  cameraLut: {
-                    requested: cameraProfile,
-                    appliedLutName: cameraProfile === 'neutral' ? 'Neutral Rec.709 (No LUT)' : (CAMERA_PRESETS.find(p => p.id === cameraProfile)?.name || 'ARRI Alexa 35 LogC4'),
-                    lutType: cameraProfile === 'neutral' ? 'none' : 'camera_technical_conversion',
-                    status: cameraProfile === 'neutral' ? 'not_applied' : 'applied',
+                  audio: {
+                    hasAudio: Boolean(media.has_audio),
+                    codecName: media.audio_codec,
+                    channels: media.audio_channels,
+                    sampleRateHz: media.audio_sample_rate,
+                    durationSeconds: media.audio_duration,
                   },
-                  scanStandard: {
-                    requested: fieldMode,
-                    actual: fieldMode === 'interlaced-tff' ? '1080i TFF' : fieldMode === 'interlaced-bff' ? '1080i BFF' : 'Progressive (1p)',
-                    match: true,
+                  aspectRatioHandling: aspectPreserved ? 'preserved' : undefined,
+                  comparison: {
+                    resolution: { requested: resolution, actual: resultPayload.outputResolution, match: qc.checks.dimensionsMatch },
+                    frameRate: {
+                      requested: fps,
+                      actual: fpsLabel,
+                      mode: 'resampling',
+                      match: qc.checks.frameRateConsistent,
+                    },
+                    cameraLut: {
+                      requested: CAMERA_PRESETS.find((preset) => preset.id === cameraProfile)?.name || cameraProfile,
+                      appliedLutName: appliedCamera?.name || 'Unconfirmed',
+                      lutType: appliedCamera && appliedCamera.id !== 'neutral' ? 'creative_look' : 'none',
+                      status: !appliedCamera ? 'unavailable' : appliedCamera.id !== cameraProfile
+                        ? 'failed' : appliedCamera.id === 'neutral' ? 'not_applied' : 'applied',
+                    },
+                    scanStandard: {
+                      requested: fieldMode,
+                      actual: actualScan,
+                      match: fieldMode === 'progressive' ? actualScan === 'Progressive'
+                        : actualScan === (fieldMode === 'interlaced-tff' ? 'Interlaced TFF' : 'Interlaced BFF'),
+                    },
+                    exportCodec: { requested: 'H.264 / AVC MP4', actual: media.codec_name || 'Unconfirmed', match: qc.checks.codecMatch },
                   },
-                  exportCodec: {
-                    requested: 'H.264 / AVC MP4',
-                    actual: 'H.264 / AVC High@L5.1',
-                    match: true,
+                  qc,
+                  processingTimeMs: processingTimeMs ?? 0,
+                  processingTimeFormatted,
+                  workerEngine: statusData.worker || 'Modal cloud worker',
+                  appliedModelName: result.neuralEngine || 'Unconfirmed',
+                  appliedFaceRestore: result.faceRestoration || 'Unconfirmed',
+                  appliedMastering: {
+                    grainLevel: result.grainLevel,
+                    shutterFixApplied: result.shutterFix,
+                    gammaTransform: result.targetGamma,
                   },
-                },
-                qc: result.qc || {
-                  passed: true,
-                  checks: {
-                    fileNonEmpty: true,
-                    videoStreamPresent: true,
-                    dimensionsMatch: true,
-                    frameRateConsistent: true,
-                    durationConsistent: true,
-                    codecMatch: true,
-                    audioConsistent: true,
-                    audioDurationWithinTolerance: true,
-                    fullDecodeVerified: true,
-                  },
-                  reasons: [],
-                },
-                processingTimeMs: parseInt(resultPayload.processingTimeFormatted, 10) * 1000 || 4200,
-                processingTimeFormatted: resultPayload.processingTimeFormatted,
-                workerEngine: 'Modal Serverless A10G Cloud GPU',
-                appliedModelName: modelTier === 'x4plus'
-                  ? 'Real-ESRGAN Studio Remaster (RRDBNet x4plus, 16.7M params)'
-                  : 'Real-ESRGAN Compact (SRVGGNetCompact x4v3, 1.21M params)',
-                appliedFaceRestore: enableFaceRestore
-                  ? 'GFPGAN v1.4 Active (Fidelity: 0.65, L* Luminance Harmonized)'
-                  : 'Disabled (Authentic Micro-Textures Preserved)',
-                appliedMastering: {
-                  unsharpFilter: enableFaceRestore
-                    ? 'Adaptive gentle 3x3 kernel (unsharp=3:3:0.25:3:3:0.10)'
-                    : 'Standard 5x5 broadcast kernel (unsharp=5:5:0.40:3:3:0.15)',
-                  grainLevel: grainLevel,
-                  shutterFixApplied: shutterFix,
-                  gammaTransform: targetGamma,
-                },
-              };
-              setRenderedMediaMetadata(outMeta);
+                };
+                setRenderedMediaMetadata(outMeta);
+              } else {
+                setRenderedMediaMetadata(null);
+              }
 
               // Decrement daily quota balance upon genuine success
               const updatedQuota = decrementQuota(user?.id, user);
               setQuota(updatedQuota);
 
-              // Commit client-side credits deduction
-              const remainingCreds = commitHeldUserCredits(cost, activeJobId, currentUserId);
-              setCredits(remainingCreds);
+              void refreshCredits();
 
               // Render finished successfully - result displayed in UI without auto-download (Export button handles download)
               const quotaMsg = TEMPORARILY_HIDE_DAILY_LIMIT
@@ -970,17 +886,20 @@ export default function Home() {
 
               // Save to local history
               try {
-                const storedHistory = localStorage.getItem('kosmos_video_history');
-                const historyList: HistoryItem[] = storedHistory ? JSON.parse(storedHistory) : [];
+                const historyKey = `kosmos_video_history_${currentUserId}`;
+                const storedHistory = localStorage.getItem(historyKey) ?? localStorage.getItem('kosmos_video_history');
+                const historyList: HistoryItem[] = storedHistory
+                  ? (JSON.parse(storedHistory) as HistoryItem[]).filter((entry) => entry.userId === currentUserId)
+                  : [];
                 const newHistoryItem: HistoryItem = {
                   id: `kosmos-${Date.now()}`,
                   filename: fileMetadata?.name || 'Enhanced_Clip.mp4',
                   fileSizeFormatted: resultPayload.outputFileSizeFormatted,
-                  originalDuration: isPreview ? '00:05' : '00:10',
-                  resolution,
-                  fps,
+                  originalDuration: sourceMediaMetadata?.container.durationFormatted || fileMetadata?.durationFormatted || 'Unavailable',
+                  resolution: resultPayload.outputResolution,
+                  fps: resultPayload.fps,
                   preset: enhancementMode,
-                  cameraProfile: cameraProfile,
+                  cameraProfile: appliedCamera?.id,
                   timestamp: new Date().toLocaleString(),
                   processingTimeFormatted,
                   videoUrl: previewVideoUrl,
@@ -993,7 +912,7 @@ export default function Home() {
                   userEmail: user?.primaryEmailAddress?.emailAddress || undefined,
                 };
                 historyList.unshift(newHistoryItem);
-                localStorage.setItem('kosmos_video_history', JSON.stringify(historyList.slice(0, 30)));
+                if (currentUserId) localStorage.setItem(historyKey, JSON.stringify(historyList.slice(0, 30)));
               } catch (histErr) {
                 console.error('Failed saving to history:', histErr);
               }
@@ -1029,7 +948,7 @@ export default function Home() {
     } catch (err: any) {
       if (pollInterval) clearInterval(pollInterval);
       if (activeJobId) {
-        releaseHeldUserCredits(cost, activeJobId, currentUserId);
+        void refreshCredits();
         if (typeof window !== 'undefined') {
           localStorage.removeItem('kosmos_active_job_id');
         }
@@ -1047,7 +966,7 @@ export default function Home() {
 
   const handleDownloadOutput = async () => {
     // 1. Check Clerk Auth Session (bypassed in development mode)
-    if (!isSignedIn && !isDevelopmentMode()) {
+    if (!isSignedIn) {
       if (openSignIn) {
         openSignIn();
       } else {
@@ -1120,51 +1039,33 @@ export default function Home() {
 
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#030712] text-slate-100">
+    <div className="studio-shell min-h-screen flex flex-col text-slate-100">
       <Navbar />
 
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 w-full">
+      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 w-full">
         
-        {/* Hero Section */}
-        <div className="text-center max-w-4xl mx-auto mb-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-cyan-500/10 via-violet-500/10 to-emerald-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-semibold mb-4 backdrop-blur-md">
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-spin" style={{ animationDuration: '6s' }} />
-            <span>KosMos AI Neural Core • Modal Cloud GPU Acceleration</span>
+        <section className="studio-hero" aria-labelledby="studio-title">
+          <div className="studio-hero-image" aria-hidden="true" />
+          <div className="studio-hero-copy">
+            <p className="studio-eyebrow"><Film size={15} /> KosMos AI Studio</p>
+            <h1 id="studio-title">Restore the footage.<br /><span>Keep the story.</span></h1>
+            <p className="studio-intro">Enhance low-resolution video, compare the result against the original, and export a master with measured output specs.</p>
+            <button type="button" className="studio-primary" onClick={() => fileInputRef.current?.click()}>
+              <UploadCloud size={19} /> Upload footage
+            </button>
           </div>
-
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold text-white font-display tracking-tight leading-tight">
-            Next-Gen AI Video Upscaler & <br className="hidden sm:block" />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-violet-400 to-emerald-400">
-              Broadcast Master Delivery
-            </span>
-          </h1>
-
-          <p className="mt-4 text-sm sm:text-base text-slate-400 max-w-2xl mx-auto leading-relaxed">
-            Upscale vintage, mobile, or compressed footage to <strong>8K Cinematic clarity</strong> and convert frame rates up to <strong>240 FPS</strong> with verified broadcast standards.
-          </p>
-
-          {/* Quick Stats Badges */}
-          <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-4 mt-6 text-xs text-slate-400">
-            <span className="px-3 py-1 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center gap-1.5">
-              <Cpu className="w-3.5 h-3.5 text-cyan-400" />
-              Real-ESRGAN Super-Resolution
-            </span>
-            <span className="px-3 py-1 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center gap-1.5">
-              <Layers className="w-3.5 h-3.5 text-violet-400" />
-              Broadcast Cadence & Resampling
-            </span>
-            <span className="px-3 py-1 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center gap-1.5">
-              <MonitorCheck className="w-3.5 h-3.5 text-emerald-400" />
-              Rec.709 H.264 Master Delivery
-            </span>
+          <div className="studio-hero-caption"><span /> Illustrative footage</div>
+        </section>
+        <div className="studio-workspace-head" id="studio-workspace">
+          <div>
+            <h2>Enhancement workspace</h2>
+            <p>Load your source, set the output, and inspect the render.</p>
           </div>
+          <span className="studio-format"><MonitorCheck size={16} /> H.264 / MP4 delivery</span>
         </div>
-
-        {/* Studio Workspace Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 xl:gap-7 items-start">
           {/* Left / Center Column: Upload + Config (7 Cols on LG) */}
-          <div className="lg:col-span-7 space-y-6">
+          <div className="lg:col-span-6 min-w-0 space-y-5">
 
             {/* Drag & Drop File Uploader Box */}
             <div
@@ -1176,7 +1077,7 @@ export default function Home() {
                   fileInputRef.current.click();
                 }
               }}
-              className={`relative rounded-3xl p-6 sm:p-8 border-2 border-dashed transition duration-200 text-center cursor-pointer overflow-hidden ${
+              className={`studio-upload relative rounded-2xl p-5 sm:p-7 border border-dashed transition duration-200 text-center cursor-pointer overflow-hidden ${
                 isDraggingOver
                   ? 'border-cyan-400 bg-cyan-950/30 scale-[1.01]'
                   : filePreviewUrl
@@ -1201,11 +1102,11 @@ export default function Home() {
                         <FileVideo className="w-5 h-5" />
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-white max-w-xs truncate">
+                        <p className="text-sm font-bold text-white max-w-[52vw] sm:max-w-xs truncate">
                           {fileMetadata?.name}
                         </p>
                         <p className="text-[11px] text-cyan-400 font-mono">
-                          Ready for Neural Synthesis
+                          Source ready
                         </p>
                       </div>
                     </div>
@@ -1288,14 +1189,9 @@ export default function Home() {
                     Drag and drop your video here, or <span className="text-cyan-400 underline">browse</span>
                   </p>
                   <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                    Supports MP4, MOV, MKV, WebM, and compressed WhatsApp clips up to 4GB.
+                    Use a short MP4, MOV, or WebM clip. Large browser uploads may be trimmed.
                   </p>
 
-                  <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-[11px] text-slate-500">
-                    <span className="px-2 py-0.5 rounded bg-slate-800/80">Any Aspect Ratio</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-800/80">Auto Audio Track Sync</span>
-                    <span className="px-2 py-0.5 rounded bg-slate-800/80">Lossless Color</span>
-                  </div>
                 </div>
               )}
             </div>
@@ -1304,7 +1200,7 @@ export default function Home() {
             {!filePreviewUrl && (
               <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80">
                 <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-2">
-                  No video on hand? Test instant neural presets with 1-click:
+                  Sample footage
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {demoSamples.map((sample, idx) => (
@@ -1326,7 +1222,7 @@ export default function Home() {
             )}
 
             {/* Step 1: Output Goal */}
-            <div className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800/90 space-y-4">
+            <div className="studio-panel p-4 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-800/90 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-base font-bold text-white font-display">
@@ -1337,7 +1233,7 @@ export default function Home() {
                   </p>
                 </div>
                 <span className="text-[10px] uppercase font-bold text-cyan-400 px-2 py-0.5 bg-cyan-950/40 rounded border border-cyan-500/30">
-                  Step 1 of 4
+                  Output preset
                 </span>
               </div>
 
@@ -1366,7 +1262,7 @@ export default function Home() {
                   {
                     id: 'upscale' as const,
                     title: 'AI Super-Resolution',
-                    badge: 'Most Popular',
+                    badge: '4K preset',
                     sub: '4K Ultra HD • 60 FPS • Real-ESRGAN',
                     icon: Sparkles,
                     apply: () => {
@@ -1427,7 +1323,7 @@ export default function Home() {
             </div>
 
             {/* Step 2: Output Specifications */}
-            <div className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800/90 space-y-4">
+            <div className="studio-panel p-4 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-800/90 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-base font-bold text-white font-display">
@@ -1438,7 +1334,7 @@ export default function Home() {
                   </p>
                 </div>
                 <span className="text-[10px] uppercase font-bold text-cyan-400 px-2 py-0.5 bg-cyan-950/40 rounded border border-cyan-500/30">
-                  Step 2 of 4
+                  Render settings
                 </span>
               </div>
 
@@ -1450,7 +1346,7 @@ export default function Home() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
                     { label: '1080p Full HD', dim: '1920x1080' },
-                    { label: '2K DCI (2048×1080)', dim: '2048×1080 (Cinema DCI)' },
+                    { label: '2K QHD (2560×1440)', dim: '2560×1440 (QHD)' },
                     { label: '4K Ultra HD', dim: '3840x2160' },
                     { label: '8K Cinematic', dim: '7680x4320' },
                   ].map((item) => {
@@ -1766,7 +1662,7 @@ export default function Home() {
             </div>
 
             {/* Launch Action Buttons */}
-            <div className="p-6 rounded-3xl bg-gradient-to-r from-slate-900 via-slate-900/90 to-cyan-950/40 border border-slate-800 space-y-4">
+            <div className="studio-panel p-4 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
               {/* Daily Free Quota Indicator (Hidden when TEMPORARILY_HIDE_DAILY_LIMIT is active) */}
               {!TEMPORARILY_HIDE_DAILY_LIMIT && (
                 <div className="flex items-center justify-between text-xs">
@@ -1802,7 +1698,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (!isSignedIn && !isDevelopmentMode()) {
+                    if (!isSignedIn) {
                       openSignIn ? openSignIn() : setShowGoogleAuthModal(true);
                       return;
                     }
@@ -1835,7 +1731,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (!isSignedIn && !isDevelopmentMode()) {
+                    if (!isSignedIn) {
                       openSignIn ? openSignIn() : setShowGoogleAuthModal(true);
                       return;
                     }
@@ -1888,7 +1784,7 @@ export default function Home() {
                   </div>
 
                   <p className="text-[11px] text-slate-500 text-center">
-                    Neural pipeline running optical flow tensor passes. Do not close tab.
+                    Your render is running on the cloud worker.
                   </p>
                 </div>
               )}
@@ -1896,17 +1792,17 @@ export default function Home() {
 
           </div>
 
-          {/* Right Column: Output / Interactive Split Slider (5 Cols on LG) */}
-          <div className="lg:col-span-5 space-y-6">
+          {/* Right Column: Output / Source and output (5 Cols on LG) */}
+          <div className="lg:col-span-6 min-w-0 space-y-5 lg:sticky lg:top-24">
             
-            <div className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800/90 space-y-4">
+            <div className="studio-panel p-4 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-800/90 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-base font-bold text-white font-display">
-                    Interactive Split Slider
+                    Source and output
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Live side-by-side comparison (Original vs KosMos AI)
+                    Compare the source with the rendered file.
                   </p>
                 </div>
                 <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400">
@@ -1915,18 +1811,26 @@ export default function Home() {
               </div>
 
               {/* Comparison Slider Component */}
+              {isEnhanced && enhancedVideoUrl ? (
               <ComparisonSlider
-                originalVideoSrc={filePreviewUrl || demoSamples[0].url}
+                originalVideoSrc={processedResult?.originalVideoUrl || filePreviewUrl || enhancedVideoUrl}
                 enhancedVideoSrc={enhancedVideoUrl || processedResult?.videoUrl || filePreviewUrl || demoSamples[0].url}
                 presetName={enhancementMode}
-                resolution={resolution}
-                fps={fps}
+                resolution={processedResult?.outputResolution || resolution}
+                fps={processedResult?.fps || fps}
                 cameraProfile={cameraProfile}
-                hasRenderedOutput={Boolean(isEnhanced && (enhancedVideoUrl || processedResult?.masterUrl || processedResult?.previewUrl) && (enhancedVideoUrl || processedResult?.videoUrl) !== (filePreviewUrl || demoSamples[0].url))}
+                hasRenderedOutput={Boolean(isEnhanced && (enhancedVideoUrl || processedResult?.masterUrl || processedResult?.previewUrl) )}
                 isRenderPreview={!!processedResult?.isPreview}
                 outputFileSize={processedResult?.outputFileSizeFormatted}
                 onExport={handleDownloadOutput}
               />
+              ) : (
+                <div className="studio-monitor">
+                  <div className="studio-monitor-icon"><MonitorCheck size={24} /></div>
+                  <p>{isProcessing ? 'Rendering your footage' : 'Awaiting rendered output'}</p>
+                  <span>{filePreviewUrl ? 'Use the render controls to create an output for comparison.' : 'Upload footage or choose a sample to start.'}</span>
+                </div>
+              )}
 
               {/* Output Technical Metadata & QC Checklist Panel */}
               {renderedMediaMetadata && (
@@ -1963,13 +1867,13 @@ export default function Home() {
                     <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800">
                       <span className="text-slate-500 block text-[10px]">New File Size</span>
                       <span className="font-bold text-emerald-400">
-                        {processedResult.outputFileSizeFormatted || '58.4 MB'}
+                        {processedResult.outputFileSizeFormatted || 'Size unavailable'}
                       </span>
                     </div>
                     <div className="p-2 rounded-xl bg-slate-950/80 border border-slate-800 col-span-2 sm:col-span-1">
                       <span className="text-slate-500 block text-[10px]">Camera Profile</span>
                       <span className="font-bold text-amber-400 truncate block">
-                        {CAMERA_PROFILES.find(p => p.id === cameraProfile)?.name || 'Neutral Rec.709'}
+                        {CAMERA_PRESETS.find(p => p.id === processedResult.cameraProfile)?.name || 'Unconfirmed'}
                       </span>
                     </div>
                   </div>
@@ -1978,7 +1882,7 @@ export default function Home() {
                   <div className="px-3 py-1.5 rounded-lg bg-slate-900/80 border border-slate-800 text-[10px] text-slate-400 flex items-center justify-between">
                     <span>Source Input: <strong className="text-slate-200">{fileMetadata?.sizeFormatted || '14.1 MB'}</strong></span>
                     <span className="text-cyan-400 font-mono">➔</span>
-                    <span>AI Enhanced: <strong className="text-emerald-300">{processedResult.outputFileSizeFormatted || '58.4 MB'}</strong></span>
+                    <span>AI Enhanced: <strong className="text-emerald-300">{processedResult.outputFileSizeFormatted || 'Size unavailable'}</strong></span>
                   </div>
 
                   {/* Download Action */}
@@ -1998,8 +1902,8 @@ export default function Home() {
                         <Download className="w-4 h-4" />
                         <span>
                           {processedResult.isPreview
-                            ? `Export 5s Preview Clip (${processedResult.outputFileSizeFormatted || '8.4 MB'})`
-                            : `Export Full Video (${resolution} • ${processedResult.outputFileSizeFormatted || '58.4 MB'})`}
+                            ? `Export 5s Preview Clip (${processedResult.outputFileSizeFormatted || 'Size unavailable'})`
+                            : `Export Full Video (${resolution} • ${processedResult.outputFileSizeFormatted || 'Size unavailable'})`}
                         </span>
                       </>
                     )}
@@ -2039,36 +1943,9 @@ export default function Home() {
                     </Link>
                   </div>
                 </div>
-              ) : (
-                <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 text-xs text-slate-400 flex items-center gap-2.5">
-                  <Shield className="w-4 h-4 text-cyan-400 flex-shrink-0" />
-                  <span>
-                    Slide the center line left/right anytime to inspect real-time pixel sharpness and optical cadence clarity.
-                  </span>
-                </div>
-              )}
+              ) : null}
             </div>
 
-            {/* Feature Highlights Card */}
-            <div className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800/90 space-y-4">
-              <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                Why KosMos AI Outperforms Traditional Upscalers
-              </h4>
-              <ul className="space-y-3 text-xs text-slate-400">
-                <li className="flex items-start gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-1.5 flex-shrink-0" />
-                  <span><strong>Broadcast Cadence & Resampling:</strong> Industry standard frame rate conversion adhering to 24p/25p/30p/50p/60p delivery targets.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-violet-400 mt-1.5 flex-shrink-0" />
-                  <span><strong>Real-ESRGAN Super-Resolution:</strong> Neural edge reconstruction recovering clean micro-texture from compressed source frames.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 mt-1.5 flex-shrink-0" />
-                  <span><strong>Broadcast Standard Compliant:</strong> Delivers verified Rec.709 8-bit YUV420p H.264 masters passing full decode QC.</span>
-                </li>
-              </ul>
-            </div>
 
           </div>
 
@@ -2082,7 +1959,6 @@ export default function Home() {
         isOpen={showRefillModal}
         onClose={() => setShowRefillModal(false)}
         currentCredits={credits}
-        onCreditsUpdated={(c) => setCredits(c)}
       />
 
       {/* Interactive Render Prompt Modal (Shown when Export is clicked before rendering) */}
@@ -2190,8 +2066,7 @@ export default function Home() {
         title="Unlock Full AI Video Processing"
         subtitle={authModalSubtitle}
         onSuccess={() => {
-          const userCreds = getUserCredits(currentUserId);
-          setCredits(userCreds);
+          void refreshCredits();
         }}
       />
 

@@ -4,8 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  SignedIn,
-  SignedOut,
+  Show,
   SignInButton,
   UserButton,
   useUser,
@@ -85,11 +84,11 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-xl">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 md:h-20 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between">
         
         {/* Logo & Branding */}
         <Link href="/" className="flex items-center gap-2 sm:gap-3 group flex-shrink-0 min-w-0">
-          <div className="relative flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-cyan-500 via-violet-600 to-emerald-400 p-[1.5px] transition group-hover:scale-105 group-hover:shadow-[0_0_20px_rgba(6,182,212,0.5)] flex-shrink-0">
+          <div className="relative flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-teal-300 p-[1.5px] transition group-hover:scale-105 group-hover:shadow-[0_0_20px_rgba(6,182,212,0.5)] flex-shrink-0">
             <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
               <Film className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400 group-hover:text-emerald-300 transition" />
             </div>
@@ -97,14 +96,11 @@ export default function Navbar() {
           <div className="flex flex-col min-w-0">
             <div className="flex items-center gap-1.5 sm:gap-2">
               <span className="font-extrabold text-base sm:text-lg md:text-xl tracking-tight text-white font-display whitespace-nowrap">
-                KosMos <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-violet-400 to-emerald-400">AI</span>
-              </span>
-              <span className="text-[9px] sm:text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 whitespace-nowrap">
-                v2.6
+                KosMos <span className="text-teal-300">AI</span>
               </span>
             </div>
             <span className="hidden md:block text-[10px] text-slate-400 tracking-wide">
-              Next-Gen AI Video Upscaler & Interpolation
+              Video enhancement studio
             </span>
           </div>
         </Link>
@@ -148,23 +144,23 @@ export default function Navbar() {
           </button>
 
           {/* Clerk Auth Section */}
-          <SignedOut>
+          <Show when="signed-out">
             <SignInButton mode="modal">
-              <button className="px-3 py-1.5 sm:px-4 sm:py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-full shadow transition whitespace-nowrap">
+              <button className="px-3 py-1.5 sm:px-4 sm:py-2 bg-teal-300 hover:bg-teal-200 text-slate-950 text-sm font-semibold rounded-full shadow transition whitespace-nowrap">
                 Sign In
               </button>
             </SignInButton>
-          </SignedOut>
-          <SignedIn>
+          </Show>
+          <Show when="signed-in">
             <div className="flex items-center gap-2 sm:gap-3">
               {!TEMPORARILY_HIDE_DAILY_LIMIT && (
                 <span className="hidden sm:inline-block text-xs bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2.5 py-1 rounded-full whitespace-nowrap">
                   3 Free Clips / 24h
                 </span>
               )}
-              <UserButton afterSignOutUrl="/"/>
+              <UserButton />
             </div>
-          </SignedIn>
+          </Show>
         </div>
 
       </div>

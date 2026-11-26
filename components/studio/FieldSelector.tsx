@@ -178,7 +178,7 @@ export const FieldSelector: React.FC<FieldSelectorProps> = ({
           <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 pt-1 border-t border-white/5">
             <span>Status:</span>
             <span className={shutterFix ? 'text-cyan-300 font-semibold' : 'text-slate-500'}>
-              {shutterFix ? 'Active (Optical Flow Skew Dejudder)' : 'Off (Native Camera Shutter)'}
+              {shutterFix ? 'Active (FFmpeg frame blending)' : 'Off (Native Camera Shutter)'}
             </span>
           </div>
         </div>
@@ -198,7 +198,7 @@ export const FieldSelector: React.FC<FieldSelectorProps> = ({
                   </span>
                 </h4>
                 <p className="text-[11px] text-slate-400 leading-tight mt-0.5">
-                  Converts HDR/Rec.709 into neutral low-contrast log space before 3D LUTs.
+                  Applies a lower-contrast creative curve before the selected LUT.
                 </p>
               </div>
             </div>

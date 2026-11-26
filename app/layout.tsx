@@ -9,9 +9,9 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "KosMos AI — Broadcast Video Upscaler & Frame-Rate Conversion",
+  title: "KosMos AI — Video Enhancement Studio",
   description:
-    "Elevate video footage up to 8K resolution with professional frame-rate conversion, neural super-resolution, broadcast color science, and verified technical quality control.",
+    "Enhance low-resolution video, compare it against the original, and inspect measured export settings.",
   keywords: [
     "KosMos AI",
     "AI Video Enhancer",

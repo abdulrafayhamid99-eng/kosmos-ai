@@ -40,7 +40,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from pipeline import (
     BroadcastEnhancementPipeline,
-    generate_cube_lut
+    generate_cube_lut,
+    normalize_camera_preset
 )
 
 
@@ -83,7 +84,8 @@ class TestBroadcastQualityControl(unittest.TestCase):
                 "has_audio": True,
             }
 
-            with patch.object(self.pipeline, "inspect_video", return_value=mock_out_info):
+            with patch("pipeline.subprocess.run", return_value=subprocess.CompletedProcess([], 0)), \
+                 patch.object(self.pipeline, "inspect_video", return_value=mock_out_info):
                 qc = self.pipeline.run_output_qc(
                     output_video=tmp_path,
                     target_w=3840,
@@ -457,6 +459,7 @@ class TestColorAndLutProcessing(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             for profile in all_15_profiles:
+                self.assertEqual(normalize_camera_preset(profile), profile)
                 lut_file = os.path.join(tmp_dir, f"{profile}.cube")
                 generated_path = generate_cube_lut(lut_file, profile, size=5)
                 self.assertTrue(os.path.exists(generated_path), f"LUT file was not created for {profile}")
@@ -579,7 +582,8 @@ class Test12SecondRegression(unittest.TestCase):
                 "audio_duration": 12.077,
             }
 
-            with patch.object(self.pipeline, "inspect_video", return_value=mock_output_info):
+            with patch("pipeline.subprocess.run", return_value=subprocess.CompletedProcess([], 0)), \
+                 patch.object(self.pipeline, "inspect_video", return_value=mock_output_info):
                 qc = self.pipeline.run_output_qc(
                     output_video=tmp_path,
                     target_w=3840,

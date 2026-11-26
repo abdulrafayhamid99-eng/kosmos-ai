@@ -110,7 +110,7 @@ export interface RenderedMediaMetadata {
   container: ContainerMetadata;
   video: VideoStreamMetadata;
   audio: AudioStreamMetadata;
-  aspectRatioHandling: 'preserved' | 'padded' | 'cropped';
+  aspectRatioHandling?: 'preserved' | 'padded' | 'cropped';
   comparison: RequestedVsActualComparison;
   qc: OutputQualityControlResult;
   processingTimeMs: number;
