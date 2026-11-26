@@ -33,3 +33,28 @@ KosMos AI is a state-of-the-art neural video enhancement platform engineered for
 
 ---
 © 2026 KosMos AI. All rights reserved.
+
+## Script Editor
+
+Open `/editor` to build a draft from one local source video, a script with one beat per line, and an aligned SRT or WebVTT transcript. Spoken lines get ranked source ranges with transcript evidence. Mark visual or narration lines with `[B-roll]` or `[VO]` when a human needs to choose a range. Review every script line and confirm the selected clip, set a manual range, or omit the line. Footage is read by the browser during review.
+
+If you do not have a transcript, the optional local transcription worker produces one from the source audio. It downloads model weights on first use unless you point it at a local model directory. Review the generated transcript before confirming quotes.
+
+```bash
+python -m pip install -r worker/requirements-editor.txt
+python worker/transcribe_source.py source.mp4 source.vtt
+```
+
+The editor exports a timeline manifest. With FFmpeg and FFprobe installed, run:
+
+```bash
+python worker/render_script_cut.py kosmos-cut.json source.mp4 edited.mp4
+```
+
+The renderer uses the original source, preserves the reviewed clip order, and checks the resulting video and audio streams. Hosted transcription and rendering, visual B-roll matching, and a multiple-source timeline remain outside this first workflow.
+
+Run the transcript and timeline regression checks with Node.js 22.18 or newer:
+
+```bash
+node scripts/test-editor-timeline.mjs
+```
