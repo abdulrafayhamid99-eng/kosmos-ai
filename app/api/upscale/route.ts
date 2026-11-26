@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { randomUUID } from 'node:crypto';
 import { finishRender, reserveRender } from '@/lib/studioAccount';
-import { modalEndpoint, modalHeaders, supportedSource, validRenderId } from '@/lib/modalGateway';
+import { modalConfigured, modalEndpoint, modalHeaders, supportedSource, validRenderId } from '@/lib/modalGateway';
 import { z } from 'zod';
 import { CAMERA_PRESETS, FRAME_RATE_PRESETS, CameraPreset, FrameRatePreset } from '@/components/studio/presets';
 
@@ -64,6 +64,14 @@ export async function POST(req: Request) {
   try {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ success: false, error: 'Sign in to render footage.' }, { status: 401 });
+
+    if (!modalConfigured() || !process.env.KOSMOS_DATABASE_URL?.trim()) {
+      console.error('[Upscale API] Render worker or studio database configuration is missing.');
+      return NextResponse.json({
+        success: false,
+        error: 'Rendering is unavailable on this deployment. The cloud GPU worker or studio database is not configured.',
+      }, { status: 503 });
+    }
 
     const contentType = req.headers.get('content-type') || '';
     let rawPayload: Record<string, any> = {};
@@ -375,7 +383,7 @@ export async function GET() {
     version: '1.1.0-broadcast-enhancements',
     status: 'operational',
     authentication: 'Clerk v5 Protected',
-    modalConfigured: !!(process.env.MODAL_APP_ENDPOINT || process.env.MODAL_FUNCTION_URL),
+    modalConfigured: modalConfigured(),
     replicateConfigured: !!process.env.REPLICATE_API_TOKEN,
     supportedFieldModes: [
       { id: 'progressive', label: 'Progressive (p)', standard: 'Web / Cinema Master' },

@@ -4,6 +4,17 @@ const endpoints = {
   download: 'MODAL_DOWNLOAD_URL',
 } as const;
 
+export function modalConfigured() {
+  return Boolean(
+    process.env.MODAL_PROXY_KEY?.trim() &&
+    process.env.MODAL_PROXY_SECRET?.trim() &&
+    Object.values(endpoints).every((name) => {
+      const url = URL.parse(process.env[name] ?? '');
+      return url?.protocol === 'https:' || url?.protocol === 'http:';
+    })
+  );
+}
+
 export function modalEndpoint(kind: keyof typeof endpoints) {
   const value = process.env[endpoints[kind]];
   if (!value) throw new Error('The protected render worker is not configured.');

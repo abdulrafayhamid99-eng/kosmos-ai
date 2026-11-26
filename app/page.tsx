@@ -121,6 +121,7 @@ export default function Home() {
       setIsEnhanced(true);
     }
   }, [enhancedVideoUrl]);
+  const [renderError, setRenderError] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' | 'error' } | null>(null);
 
   const showToast = (message: string, type: 'info' | 'success' | 'error' = 'info') => {
@@ -457,18 +458,20 @@ export default function Home() {
 
   // Main AI Processing Action
   const handleEnhanceVideo = async (isPreview: boolean = false) => {
+    setShowRenderPromptModal(false);
+    setRenderError('');
     if (!filePreviewUrl && !file) {
-      showToast('Please upload or select a video to enhance.', 'error');
+      setRenderError('Please upload or select a video to enhance.');
       return;
     }
 
-    // 1. If user is not logged in: Prompt Google Sign-In when clicking preview or render (bypassed in dev mode)
+    if (!isLoaded) {
+      setRenderError('Sign-in is still loading. If this persists, refresh the page and try again.');
+      return;
+    }
     if (!isSignedIn) {
-      if (openSignIn) {
-        openSignIn();
-      } else {
-        setShowGoogleAuthModal(true);
-      }
+      setRenderError('Sign in to your KosMos AI account to start a render.');
+      setShowGoogleAuthModal(true);
       return;
     }
 
@@ -508,19 +511,17 @@ export default function Home() {
 
       if (file) {
         let payloadFile = file;
-        if (isPreview) {
+        // The worker extracts the five-second preview from the original when it fits.
+        const uploadLimit = 4.2 * 1024 * 1024;
+        if (file.size > uploadLimit && !isDevelopmentMode()) {
           payloadFile = await trimVideoForCloudProcessing(
             file,
-            5,
-            (msg) => setCurrentStepText(msg)
+            isPreview ? 5 : MAX_CLIP_DURATION_SECONDS,
+            setCurrentStepText
           );
-        } else if (file.size > 4.2 * 1024 * 1024 && !isDevelopmentMode()) {
-          // In production on Vercel: trim only if file exceeds 4.5MB serverless body limit
-          payloadFile = await trimVideoForCloudProcessing(
-            file,
-            MAX_CLIP_DURATION_SECONDS,
-            (msg) => setCurrentStepText(msg)
-          );
+          if (payloadFile.size > uploadLimit) {
+            throw new Error('This video exceeds the upload limit. Try a shorter clip or a smaller MP4.');
+          }
         }
 
         setCurrentStepText(
@@ -580,25 +581,13 @@ export default function Home() {
         });
       }
 
+      const initData = await response.json().catch(() => null);
       if (!response.ok) {
-        let errMessage = '';
-        try {
-          const errJson = await response.json();
-          errMessage = errJson.error || errJson.message || '';
-        } catch {
-          errMessage = await response.text();
-        }
         if (response.status === 402) setShowRefillModal(true);
-        throw new Error(errMessage || `Cloud GPU responded with status ${response.status}`);
+        if (response.status === 401) setShowGoogleAuthModal(true);
+        throw new Error(initData?.error || initData?.message || `Render request failed (HTTP ${response.status}). Please try again.`);
       }
-
-      let initData: any;
-      try {
-        initData = await response.json();
-      } catch {
-        const rawText = await response.text();
-        throw new Error(rawText || 'Server returned invalid response');
-      }
+      if (!initData) throw new Error('The render service returned an invalid response.');
 
       // If upscale route returned completed video directly:
       const directData = initData.result || initData;
@@ -954,7 +943,7 @@ export default function Home() {
         }
       }
       console.error('[KosMos AI Engine] Enhancement processing error:', err);
-      showToast(err.message || 'Modal GPU video upscaling failed', 'error');
+      setRenderError(err.message || 'Video rendering failed. Please try again.');
     } finally {
       if (intervalId) clearInterval(intervalId);
       if (pollInterval) clearInterval(pollInterval);
@@ -1697,23 +1686,9 @@ export default function Home() {
               <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (!isSignedIn) {
-                      openSignIn ? openSignIn() : setShowGoogleAuthModal(true);
-                      return;
-                    }
-                    if (!isDevelopmentMode() && quota.isExhausted) {
-                      setShowQuotaModal(true);
-                      return;
-                    }
-                    handleEnhanceVideo(true);
-                  }}
-                  disabled={isProcessing || (!isDevelopmentMode() && Boolean(isSignedIn) && quota.isExhausted)}
-                  className={`flex-1 py-3.5 px-4 rounded-2xl text-xs font-bold transition flex items-center justify-center gap-2 border shadow-sm ${
-                    !isDevelopmentMode() && isSignedIn && quota.isExhausted
-                      ? 'bg-slate-900/80 border-slate-800 text-slate-500 cursor-not-allowed opacity-50'
-                      : 'bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-slate-200 border-slate-700'
-                  }`}
+                  onClick={() => handleEnhanceVideo(true)}
+                  disabled={isProcessing}
+                  className="flex-1 py-3.5 px-4 rounded-2xl text-xs font-bold transition flex items-center justify-center gap-2 border shadow-sm bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-slate-200 border-slate-700"
                 >
                   {renderingMode === 'preview' ? (
                     <>
@@ -1730,23 +1705,9 @@ export default function Home() {
 
                 <button
                   type="button"
-                  onClick={() => {
-                    if (!isSignedIn) {
-                      openSignIn ? openSignIn() : setShowGoogleAuthModal(true);
-                      return;
-                    }
-                    if (!isDevelopmentMode() && quota.isExhausted) {
-                      setShowQuotaModal(true);
-                      return;
-                    }
-                    handleEnhanceVideo(false);
-                  }}
-                  disabled={isProcessing || (!isDevelopmentMode() && Boolean(isSignedIn) && quota.isExhausted)}
-                  className={`flex-1 py-3.5 px-4 rounded-2xl text-xs font-extrabold transition flex items-center justify-center gap-2 shadow-xl ${
-                    !isDevelopmentMode() && isSignedIn && quota.isExhausted
-                      ? 'bg-slate-800 border border-slate-700 text-slate-500 cursor-not-allowed opacity-50 shadow-none'
-                      : 'bg-gradient-to-r from-cyan-500 via-violet-600 to-emerald-500 hover:opacity-95 disabled:opacity-60 text-white shadow-cyan-500/20 active:scale-[0.99]'
-                  }`}
+                  onClick={() => handleEnhanceVideo(false)}
+                  disabled={isProcessing}
+                  className="flex-1 py-3.5 px-4 rounded-2xl text-xs font-extrabold transition flex items-center justify-center gap-2 shadow-xl bg-gradient-to-r from-cyan-500 via-violet-600 to-emerald-500 hover:opacity-95 disabled:opacity-60 text-white shadow-cyan-500/20 active:scale-[0.99]"
                 >
                   {renderingMode === 'full' ? (
                     <>
@@ -1761,6 +1722,12 @@ export default function Home() {
                   )}
                 </button>
               </div>
+
+              {renderError && (
+                <p role="alert" className="rounded-xl border border-rose-500/30 bg-rose-950/30 p-3 text-xs text-rose-200">
+                  {renderError}
+                </p>
+              )}
 
               {/* Live Multi-Step Progress Indicator */}
               {(isProcessing || isRendering) && !enhancedVideoUrl && (
@@ -1913,18 +1880,8 @@ export default function Home() {
                     <div className="pt-1">
                       <button
                         type="button"
-                        onClick={() => {
-                          if (!isSignedIn) {
-                            openSignIn ? openSignIn() : setShowGoogleAuthModal(true);
-                            return;
-                          }
-                          if (quota.isExhausted) {
-                            setShowQuotaModal(true);
-                            return;
-                          }
-                          handleEnhanceVideo(false);
-                        }}
-                        disabled={isProcessing || (Boolean(isSignedIn) && quota.isExhausted)}
+                        onClick={() => handleEnhanceVideo(false)}
+                        disabled={isProcessing}
                         className="w-full py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-bold transition flex items-center justify-center gap-1.5 border border-cyan-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Zap className="w-3.5 h-3.5 fill-cyan-400" />
@@ -2000,19 +1957,8 @@ export default function Home() {
             <div className="space-y-2.5 pt-1">
               <button
                 type="button"
-                onClick={() => {
-                  setShowRenderPromptModal(false);
-                  if (!isSignedIn) {
-                    openSignIn ? openSignIn() : setShowGoogleAuthModal(true);
-                    return;
-                  }
-                  if (quota.isExhausted) {
-                    setShowQuotaModal(true);
-                    return;
-                  }
-                  handleEnhanceVideo(false);
-                }}
-                disabled={isProcessing || (Boolean(isSignedIn) && quota.isExhausted)}
+                onClick={() => handleEnhanceVideo(false)}
+                disabled={isProcessing}
                 className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 via-violet-600 to-emerald-500 hover:opacity-95 text-white font-extrabold text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Zap className="w-4 h-4 fill-white" />
@@ -2021,19 +1967,8 @@ export default function Home() {
 
               <button
                 type="button"
-                onClick={() => {
-                  setShowRenderPromptModal(false);
-                  if (!isSignedIn) {
-                    openSignIn ? openSignIn() : setShowGoogleAuthModal(true);
-                    return;
-                  }
-                  if (quota.isExhausted) {
-                    setShowQuotaModal(true);
-                    return;
-                  }
-                  handleEnhanceVideo(true);
-                }}
-                disabled={isProcessing || (Boolean(isSignedIn) && quota.isExhausted)}
+                onClick={() => handleEnhanceVideo(true)}
+                disabled={isProcessing}
                 className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition flex items-center justify-center gap-2 border border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Sparkles className="w-4 h-4 text-cyan-400" />
