@@ -14,163 +14,6 @@ import {
   Download
 } from 'lucide-react';
 
-export interface CameraProfile {
-  id: string;
-  name: string;
-  sub: string;
-  badge: string;
-  filter: string;
-  colorHex: string;
-  accent: string;
-}
-
-export const CAMERA_PROFILES: CameraProfile[] = [
-  {
-    id: 'neutral',
-    name: 'Neutral Rec.709 (No LUT)',
-    sub: 'Clean AI upscale preserving authentic source colors',
-    badge: 'Newsroom Neutral',
-    filter: 'none',
-    colorHex: '#06b6d4',
-    accent: 'border-cyan-500/50 bg-cyan-950/20 text-cyan-400',
-  },
-  {
-    id: 'native_clean',
-    name: 'Native Uncolored (No LUT)',
-    sub: 'Clean AI upscale preserving original colors',
-    badge: 'Clean Neutral',
-    filter: 'none',
-    colorHex: '#06b6d4',
-    accent: 'border-cyan-500/50 bg-cyan-950/20 text-cyan-400',
-  },
-  {
-    id: 'arri-alexa-35',
-    name: 'ARRI LogC / Alexa-Inspired',
-    sub: 'LogC4 • Rich highlight roll-off & Hollywood skin tones',
-    badge: 'LogC4 Cinema',
-    filter: 'sepia(0.08) contrast(1.14) saturate(1.15) brightness(1.02) hue-rotate(-2deg)',
-    colorHex: '#f59e0b',
-    accent: 'border-amber-500/50 bg-amber-950/20 text-amber-400',
-  },
-  {
-    id: 'sony-scinetone',
-    name: 'Sony S-Cinetone-Inspired',
-    sub: 'S-Cinetone / Venice 2 • Soft midtones & natural skin tones',
-    badge: 'S-Cinetone Cinema',
-    filter: 'contrast(1.10) saturate(1.14) brightness(1.04) hue-rotate(2deg)',
-    colorHex: '#3b82f6',
-    accent: 'border-blue-500/50 bg-blue-950/20 text-blue-400',
-  },
-  {
-    id: 'red-ipp2',
-    name: 'RED IPP2-Inspired',
-    sub: 'IPP2 RedColor4 • Controlled contrast & deep micro-textures',
-    badge: 'IPP2 Cinema',
-    filter: 'contrast(1.24) saturate(1.22) brightness(0.98)',
-    colorHex: '#ef4444',
-    accent: 'border-rose-500/50 bg-rose-950/20 text-rose-400',
-  },
-  {
-    id: 'canon-clog',
-    name: 'Canon Cinema C-Log-Inspired',
-    sub: 'Canon Log 3 • Pleasing warm facial tonality',
-    badge: 'Canon Cinema',
-    filter: 'sepia(0.12) contrast(1.14) saturate(1.18) brightness(1.03) hue-rotate(-3deg)',
-    colorHex: '#dc2626',
-    accent: 'border-red-500/50 bg-red-950/20 text-red-400',
-  },
-  {
-    id: 'fuji-eterna',
-    name: 'Fujifilm Eterna-Inspired',
-    sub: 'Eterna Film • Soft contrast & muted cinematic colors',
-    badge: 'Eterna Emulsion',
-    filter: 'contrast(1.06) saturate(0.92) brightness(1.03) sepia(0.04) hue-rotate(1deg)',
-    colorHex: '#10b981',
-    accent: 'border-emerald-500/50 bg-emerald-950/20 text-emerald-400',
-  },
-  {
-    id: 'panasonic-vlog',
-    name: 'Panasonic V-Log-Inspired',
-    sub: 'Varicam 35 / V-Log • Balanced highlights & neutral truth',
-    badge: 'Varicam Cinema',
-    filter: 'contrast(1.08) saturate(1.04) brightness(1.01)',
-    colorHex: '#0d9488',
-    accent: 'border-teal-500/50 bg-teal-950/20 text-teal-400',
-  },
-  {
-    id: 'blackmagic-film',
-    name: 'Blackmagic Film-Inspired',
-    sub: 'BMD Gen 5 • Organic film saturation & color separation',
-    badge: 'BMD Gen 5 Film',
-    filter: 'contrast(1.18) saturate(1.30) brightness(1.01)',
-    colorHex: '#f97316',
-    accent: 'border-orange-500/50 bg-orange-950/20 text-orange-400',
-  },
-  {
-    id: 'panavision-dxl2',
-    name: 'Panavision DXL2 Light Iron Color 2',
-    sub: 'Light Iron Color 2 • Blockbuster midtone punch',
-    badge: 'Light Iron Color 2',
-    filter: 'sepia(0.10) contrast(1.16) saturate(1.18) brightness(1.01) hue-rotate(-3deg)',
-    colorHex: '#eab308',
-    accent: 'border-yellow-500/50 bg-yellow-950/20 text-yellow-400',
-  },
-  {
-    id: 'leica-sl2s-cine',
-    name: 'Leica SL2-S Cine Profile',
-    sub: 'Leica Cine • Deep micro-contrast & organic blacks',
-    badge: 'Leica Cine Look',
-    filter: 'contrast(1.24) saturate(1.08) brightness(0.99) hue-rotate(-1deg)',
-    colorHex: '#e11d48',
-    accent: 'border-rose-600/50 bg-rose-950/20 text-rose-400',
-  },
-  {
-    id: 'kodak-2383',
-    name: 'Kodak 2383-Inspired Print Film',
-    sub: 'Theatrical Print • Film-print contrast & warm highlights',
-    badge: 'Print Film Look',
-    filter: 'sepia(0.16) contrast(1.22) saturate(1.12) brightness(0.98) hue-rotate(-4deg)',
-    colorHex: '#d97706',
-    accent: 'border-amber-600/50 bg-amber-950/20 text-amber-300',
-  },
-  {
-    id: 'agfa-vintage',
-    name: 'Agfa-Inspired Vintage Film',
-    sub: 'Agfacolor 1970s • Subtle vintage color character',
-    badge: 'Retro Vintage',
-    filter: 'sepia(0.20) contrast(1.08) saturate(0.96) brightness(1.03) hue-rotate(4deg)',
-    colorHex: '#ca8a04',
-    accent: 'border-yellow-600/50 bg-yellow-950/20 text-yellow-300',
-  },
-  {
-    id: 'bleach-bypass',
-    name: 'Bleach Bypass Look',
-    sub: 'Silver Retention • Reduced saturation & stark contrast',
-    badge: 'Gritty Action',
-    filter: 'saturate(0.45) contrast(1.36) brightness(0.96)',
-    colorHex: '#64748b',
-    accent: 'border-slate-500/50 bg-slate-900/30 text-slate-300',
-  },
-  {
-    id: 'teal-orange',
-    name: 'Teal & Orange Cinema Look',
-    sub: 'Split Tone • Restrained complementary teal & orange',
-    badge: 'Blockbuster Look',
-    filter: 'contrast(1.18) saturate(1.20) hue-rotate(-8deg)',
-    colorHex: '#0891b2',
-    accent: 'border-cyan-600/50 bg-cyan-950/20 text-cyan-300',
-  },
-  {
-    id: 'monochrome-cinema',
-    name: 'Monochrome Cinema Look',
-    sub: 'Silver Halide • Balanced black-and-white tonal contrast',
-    badge: 'Noir Editorial',
-    filter: 'grayscale(1) contrast(1.20) brightness(1.02)',
-    colorHex: '#ffffff',
-    accent: 'border-white/50 bg-white/10 text-white',
-  },
-];
-
 interface ComparisonSliderProps {
   originalVideoSrc?: string;
   enhancedVideoSrc?: string;
@@ -188,11 +31,8 @@ interface ComparisonSliderProps {
 export default function ComparisonSlider({
   originalVideoSrc,
   enhancedVideoSrc,
-  presetName = "Studio 4K Remaster",
   resolution = "4K Ultra HD",
   fps = "60 FPS",
-  cameraProfile = "Native Uncolored",
-  applyNeuralFilter = true,
   hasRenderedOutput = false,
   isRenderPreview = false,
   outputFileSize,
@@ -210,8 +50,6 @@ export default function ComparisonSlider({
   const [duration, setDuration] = useState<number>(0);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
-  const [isAiSharpenActive, setIsAiSharpenActive] = useState<boolean>(true);
-  const [sharpnessLevel, setSharpnessLevel] = useState<'4k' | '8k'>('4k');
   const [isDownloadingLocal, setIsDownloadingLocal] = useState<boolean>(false);
   const [videoAspectRatio, setVideoAspectRatio] = useState<string | null>(null);
   const [containerWidth, setContainerWidth] = useState<number>(0);
@@ -522,82 +360,12 @@ export default function ComparisonSlider({
   const effectiveMaxDuration = isRenderPreview ? 5 : (duration > 0 ? duration : 5);
   const effectiveCurrentTime = isRenderPreview ? Math.min(5, Math.max(0, currentTime)) : currentTime;
 
-  // Active Cinema Camera Profile calculation
-  const activeProfile =
-    CAMERA_PROFILES.find((p) => p.id === cameraProfile || p.name === cameraProfile) ||
-    CAMERA_PROFILES.find((p) => p.id === 'neutral') ||
-    CAMERA_PROFILES[0];
-
-  // Enhanced video styling: Crisp super-resolution grading combined with Cinema Camera Profile emulation
-  const enhancedFilterStyle = isAiSharpenActive
-    ? `${activeProfile.filter} ${
-        sharpnessLevel === '8k' ? 'contrast(1.08)' : ''
-      }`
-    : activeProfile.filter;
-
   return (
     <div className="w-full flex flex-col gap-2.5">
       
-      {/* Top Header / Mode Indicators */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
-        <div className="flex items-center justify-between sm:justify-start gap-2">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-xs font-semibold">
-            <Sparkles className="w-3.5 h-3.5 animate-pulse text-cyan-400" />
-            <span>AI Super-Res Split Inspector</span>
-          </div>
-          <span className="text-[11px] text-slate-400 hidden lg:inline">
-            Drag divider left/right to compare pixel clarity
-          </span>
-        </div>
-
-        {/* Neural Sharpening Engine Pill Toggle */}
-        <div className="flex items-center justify-between sm:justify-end gap-1.5 sm:gap-2">
-          {/* Intensity selector */}
-          <div className="flex items-center bg-slate-900 border border-slate-700/80 rounded-lg p-0.5 text-[10px] font-semibold">
-            <button
-              type="button"
-              onClick={() => {
-                setSharpnessLevel('4k');
-                setIsAiSharpenActive(true);
-              }}
-              className={`px-2 py-0.5 rounded transition ${
-                isAiSharpenActive && sharpnessLevel === '4k'
-                  ? 'bg-cyan-500 text-slate-950 font-bold'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              4K Crisp
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSharpnessLevel('8k');
-                setIsAiSharpenActive(true);
-              }}
-              className={`px-2 py-0.5 rounded transition ${
-                isAiSharpenActive && sharpnessLevel === '8k'
-                  ? 'bg-violet-500 text-white font-bold'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              8K Ultra
-            </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setIsAiSharpenActive(!isAiSharpenActive)}
-            title="Toggle neural sharpening enhancement"
-            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition flex items-center gap-1 ${
-              isAiSharpenActive
-                ? 'bg-cyan-950/70 border-cyan-400/60 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.3)]'
-                : 'bg-slate-900 border-slate-700 text-slate-400'
-            }`}
-          >
-            <Zap className={`w-3 h-3 ${isAiSharpenActive ? 'text-cyan-400 fill-cyan-400' : ''}`} />
-            <span>AI Super-Res: {isAiSharpenActive ? 'Active' : 'Bypass'}</span>
-          </button>
-        </div>
+      <div className="flex justify-between gap-3 text-sm font-medium text-slate-300">
+        <span>Original</span>
+        <span>{hasRenderedOutput ? 'Rendered output' : 'Awaiting render'}</span>
       </div>
 
       {/* Main Interactive Split Container (Dynamically matches video aspect ratio with object-contain & black backdrop) */}
@@ -630,30 +398,11 @@ export default function ComparisonSlider({
             onLoadedMetadata={handleLoadedMetadata}
             onTimeUpdate={handleTimeUpdate}
             style={{
-              filter: enhancedFilterStyle,
+              filter: 'none',
             }}
             className="w-full h-full object-contain transition-[filter] duration-150"
           />
 
-          {/* Enhanced Quality Badge (Top Right) */}
-          <div className="absolute top-2.5 right-2.5 md:top-4 md:right-4 z-20 pointer-events-none flex items-center gap-1.5 bg-cyan-950/90 backdrop-blur-md border border-cyan-400/60 px-2 py-1 md:px-3 md:py-1.5 rounded-full text-[10px] md:text-[11px] font-bold text-cyan-200 shadow-xl shadow-cyan-950/90">
-            <span className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-cyan-400 animate-pulse" />
-            <span>KosMos AI Enhanced <span className="hidden sm:inline">({resolution} @ {fps})</span></span>
-          </div>
-
-          {/* 5-Second Preview Loop Snippet Badge */}
-          {isRenderPreview && (
-            <div className="hidden md:flex absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none items-center gap-1.5 bg-gradient-to-r from-cyan-950/95 via-violet-950/95 to-cyan-950/95 backdrop-blur-md border border-cyan-400/80 px-3.5 py-1.5 rounded-full text-[11px] font-extrabold text-cyan-300 shadow-xl shadow-cyan-950/80 animate-pulse">
-              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-              <span>5s Preview Snippet (0:00 - 0:05 Loop Active)</span>
-            </div>
-          )}
-
-          {/* Active Cinema Camera Profile Indicator on Player (Desktop Only to avoid mobile clutter) */}
-          <div className="hidden md:flex absolute top-12 right-4 z-20 pointer-events-none items-center gap-1.5 bg-slate-950/85 backdrop-blur-md border border-slate-700/80 px-2.5 py-1 rounded-full text-[10px] font-semibold text-slate-300 shadow-lg">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: activeProfile.colorHex }} />
-            <span>{activeProfile.name}</span>
-          </div>
         </div>
 
         {/* Layer 2: Original Video (Clipped Layer - 100% True 1:1 Pixel Fidelity, Zero Blur, Zero Artificial Filters) */}
@@ -685,10 +434,7 @@ export default function ComparisonSlider({
           </div>
 
           {/* Raw Input Badge (Top Left) */}
-          <div className="absolute top-2.5 left-2.5 md:top-4 md:left-4 z-20 pointer-events-none flex items-center gap-1.5 bg-slate-950/90 backdrop-blur-md border border-slate-700/80 px-2 py-1 md:px-3 md:py-1.5 rounded-full text-[10px] md:text-[11px] font-bold text-slate-300 shadow-xl">
-            <span className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-slate-400" />
-            <span>Original <span className="hidden sm:inline">(Raw Input • 1:1)</span></span>
-          </div>
+
         </div>
 
         {/* Draggable Divider Handle Line */}
@@ -895,7 +641,7 @@ export default function ComparisonSlider({
 
       {/* Helper beneath slider */}
       <div className="flex items-center justify-between text-[11px] text-slate-500 px-1">
-        <span>👈 Drag left for AI Super-Resolution ({sharpnessLevel.toUpperCase()} Clarity Active)</span>
+        <span>Drag the divider to compare both videos.</span>
         <span>Drag right for Raw Input (1:1 Natural Pixels) 👉</span>
       </div>
     </div>

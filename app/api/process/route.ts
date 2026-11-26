@@ -91,7 +91,7 @@ export async function POST(req: Request) {
     // Determine output resolution dimensions
     let outputDimensions = '3840x2160 (4K Ultra HD)';
     if (resolution.includes('1080p')) outputDimensions = '1920x1080 (1080p Full HD)';
-    else if (resolution.includes('2K')) outputDimensions = '2048x1080 (2K DCI)';
+    else if (resolution.includes('2K')) outputDimensions = '2560x1440 (2K QHD)';
     else if (resolution.includes('8K')) outputDimensions = '7680x4320 (8K Cinematic)';
 
     // Compute realistic output file size metrics
@@ -325,7 +325,7 @@ export async function GET() {
     replicateConfigured: !!process.env.REPLICATE_API_TOKEN,
     pipeline: [
       'Step 1: Real-ESRGAN Tensor Super-Resolution (lucataco/real-esrgan-video)',
-      'Step 2: RIFE Optical Flow Motion Synthesizer',
+      'Step 2: FFmpeg frame-rate resampling',
       'Hardware Unsharp-Mask Shader Accelerators',
     ],
   });

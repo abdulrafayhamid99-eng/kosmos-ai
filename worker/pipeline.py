@@ -11,6 +11,7 @@ import shutil
 import tempfile
 import subprocess
 from pathlib import Path
+from fractions import Fraction
 from typing import Dict, Any, Optional, List, Tuple
 
 # Try importing modal; if not installed in local environment, allow standalone validation
@@ -88,6 +89,30 @@ else:
 # ==============================================================================
 # 2. 3D LUT GENERATOR & ASSETS
 # ==============================================================================
+CAMERA_PRESET_IDS = {
+    "neutral", "arri-alexa-35", "sony-scinetone", "red-ipp2", "canon-clog",
+    "fuji-eterna", "panasonic-vlog", "blackmagic-film", "panavision-dxl2",
+    "leica-sl2s-cine", "kodak-2383", "agfa-vintage", "bleach-bypass",
+    "teal-orange", "monochrome-cinema",
+}
+
+
+def normalize_camera_preset(value: str) -> str:
+    key = str(value).lower().strip().replace("_", "-")
+    if key in CAMERA_PRESET_IDS:
+        return key
+    for preset, aliases in (
+        ("neutral", ("neutral", "none", "clean", "uncolored", "rec709")),
+        ("arri-alexa-35", ("arri", "alexa")),
+        ("fuji-eterna", ("fuji", "eterna")),
+        ("panavision-dxl2", ("panavision", "dxl")),
+        ("leica-sl2s-cine", ("leica", "sl2")),
+    ):
+        if any(alias in key for alias in aliases):
+            return preset
+    raise ValueError(f"Unsupported camera look: {value}")
+
+
 def generate_cube_lut(lut_path: str, profile_id: str, size: int = 33) -> str:
     """
     Generates a mathematically accurate 3D .cube LUT file matching the broadcast camera profiles:
@@ -474,8 +499,9 @@ class BroadcastEnhancementPipeline:
                 info["color_range"] = v_stream.get("color_range") or "tv"
 
                 fo = v_stream.get("field_order", "progressive")
+                fo = {"tt": "tff", "tb": "tff", "bb": "bff", "bt": "bff"}.get(fo, fo)
                 info["field_order"] = fo if fo else "progressive"
-                info["scan_mode"] = "interlaced" if fo in ["tt", "bb", "tb", "bt"] or v_stream.get("interlaced_frame") == 1 else "progressive"
+                info["scan_mode"] = "interlaced" if fo in ("tff", "bff") or v_stream.get("interlaced_frame") == 1 else "progressive"
 
                 # Container level facts
                 info["format_name"] = fmt.get("format_name", "mp4")
@@ -614,7 +640,7 @@ class BroadcastEnhancementPipeline:
         out_fps = out_info.get("fps", 0.0)
         src_fps = source_info.get("fps", 0.0)
         if target_fps > 0:
-            if abs(out_fps - target_fps) <= 1.0:
+            if abs(out_fps - target_fps) <= 0.06:
                 qc["checks"]["frameRateConsistent"] = True
             else:
                 qc["passed"] = False
@@ -680,7 +706,7 @@ class BroadcastEnhancementPipeline:
         # 9. Full decode check
         try:
             decode_cmd = [
-                "ffmpeg", "-v", "error",
+                "ffmpeg", "-v", "error", "-xerror",
                 "-i", output_video,
                 "-f", "null", "-"
             ]
@@ -696,8 +722,8 @@ class BroadcastEnhancementPipeline:
             qc["checks"]["fullDecodeVerified"] = False
             qc["reasons"].append("Decode verification timed out after 120s (possible hanging media stream)")
         except FileNotFoundError:
-            # When FFmpeg is not installed locally on host machine, mark clearly
-            qc["checks"]["fullDecodeVerified"] = True
+            qc["passed"] = False
+            qc["reasons"].append("FFmpeg is unavailable for decode verification")
         except Exception as exc:
             qc["passed"] = False
             qc["checks"]["fullDecodeVerified"] = False
@@ -780,13 +806,8 @@ class BroadcastEnhancementPipeline:
                 active_model = self.model_x4plus
                 active_tier_name = "RRDBNet x4plus (Studio Master Tier)"
                 batch_size = 1
-            elif self.model_compact is not None:
-                active_model = self.model_compact
-                active_tier_name = "SRVGGNetCompact x4v3 (Fallback: RRDBNet weights unavailable)"
-                print(f"[KosMos Engine] WARNING: RRDBNet x4plus requested but unavailable on GPU worker; falling back to Compact.")
-                batch_size = 4
             else:
-                raise RuntimeError("No Real-ESRGAN neural model (neither RRDBNet x4plus nor Compact) loaded.")
+                raise RuntimeError("Studio Remaster is unavailable. RRDBNet x4plus weights did not load.")
         elif tier_lower in ["auto", "adaptive"]:
             # Auto-selection: If input is heavily compressed / low-res (<= 720p), prioritize high-capacity RRDBNet x4plus if available
             if (src_w <= 720 or src_h <= 720) and self.model_x4plus is not None:
@@ -804,16 +825,11 @@ class BroadcastEnhancementPipeline:
             else:
                 raise RuntimeError("No Real-ESRGAN neural model loaded on GPU worker.")
         else:
-            if self.model_compact is not None:
-                active_model = self.model_compact
-                active_tier_name = "SRVGGNetCompact x4v3 (Broadcast Fast Tier)"
-                batch_size = 4
-            elif self.model_x4plus is not None:
-                active_model = self.model_x4plus
-                active_tier_name = "RRDBNet x4plus (Studio Master Tier)"
-                batch_size = 1
-            else:
-                raise RuntimeError("No Real-ESRGAN neural model loaded on GPU worker.")
+            if self.model_compact is None:
+                raise RuntimeError("Compact enhancement is unavailable. Compact model weights did not load.")
+            active_model = self.model_compact
+            active_tier_name = "SRVGGNetCompact x4v3 (Broadcast Fast Tier)"
+            batch_size = 4
 
         self.last_active_tier_name = active_tier_name
 
@@ -847,7 +863,7 @@ class BroadcastEnhancementPipeline:
             "-vcodec", "rawvideo",
             "-s", f"{target_w}x{target_h}",
             "-pix_fmt", "bgr24",
-            "-r", str(src_fps),
+            "-r", str(Fraction(src_fps).limit_denominator(1001)),
             "-i", "-",  # stream from stdin pipe
         ]
         if has_audio:
@@ -940,9 +956,7 @@ class BroadcastEnhancementPipeline:
                             )
                         enh = t_out.clamp_(0.0, 1.0).mul_(255.0).to(torch.uint8).squeeze(0).permute(1, 2, 0).cpu().numpy()
                 else:
-                    if enable_real_esrgan:
-                        raise RuntimeError(f"AI Super-Resolution requested, but neural model failed on frame {frame_idx}. Halting to prevent silent unenhanced export.")
-                    enh = cv2.resize(b_img, (target_w, target_h), interpolation=cv2.INTER_LANCZOS4)
+                    raise RuntimeError(f"AI super-resolution model unavailable on frame {frame_idx}.")
 
                 if enable_face_restore and self.face_enhancer is not None:
                     enh = self.restore_faces_in_frame(enh, fidelity=face_restore_fidelity)
@@ -1088,14 +1102,13 @@ class BroadcastEnhancementPipeline:
 
         # 1. Motion & Shutter Physics Engine (Dejudder & Motion Smoothing)
         if shutter_fix:
-            print("[KosMos Engine] Applying motion smoothing: optical flow dejuddering & 180° motion blur.")
+            print("[KosMos Engine] Applying FFmpeg dejudder and frame blending.")
             filters.append("dejudder=cycle=4")
             filters.append("tmix=frames=2:weights='3 1'")
 
         # 2. Color Profile Engine (Flat Log Baseline)
         if target_gamma == "flat-log":
-            print("[KosMos Engine] Normalizing input colorspace to Flat Log baseline curve.")
-            filters.append("colorspace=all=bt709:trc=iec61966-2-1:fast=1")
+            print("[KosMos Engine] Applying the creative flat contrast curve.")
             filters.append("curves=all='0/0.08 0.15/0.24 0.5/0.52 0.85/0.78 1/0.92'")
 
         # 3. 3D LUT Mathematical Color Grading Transform
@@ -1131,13 +1144,20 @@ class BroadcastEnhancementPipeline:
         # 6. Broadcast Fields & Raster Scan Mode Formatting
         if field_mode == "interlaced-tff":
             print("[KosMos Engine] Formatting raster scan: Interlaced Upper Field First (1080i TFF Broadcast Standard).")
+            filters.append(f"fps={Fraction(2 * in_info.get('fps', 25)).limit_denominator(1001)}")
             filters.append("setfield=tff")
             filters.append("tinterlace=mode=interleave_top")
         elif field_mode == "interlaced-bff":
             print("[KosMos Engine] Formatting raster scan: Interlaced Lower Field First (BFF DV / Archival).")
+            filters.append(f"fps={Fraction(2 * in_info.get('fps', 25)).limit_denominator(1001)}")
             filters.append("setfield=bff")
             filters.append("tinterlace=mode=interleave_bottom")
+        elif shutter_fix:
+            filters.append(f"fps={Fraction(in_info.get('fps', 25)).limit_denominator(1001)}")
 
+        scan_args = []
+        if field_mode in ("interlaced-tff", "interlaced-bff"):
+            scan_args = ["-flags", "+ilme+ildct", "-x264-params", "tff=1" if field_mode == "interlaced-tff" else "bff=1"]
         filter_graph = ",".join(filters)
 
         print(f"[KosMos Engine] Applying broadcast master filtergraph: {filter_graph}")
@@ -1149,6 +1169,7 @@ class BroadcastEnhancementPipeline:
             "-map", "0:v",
             "-map", "0:a?",
             "-c:v", "libx264",
+            *scan_args,
             "-preset", "veryfast",
             "-crf", "20",
             "-pix_fmt", "yuv420p",
@@ -1284,7 +1305,7 @@ class BroadcastEnhancementPipeline:
                     effective_fps = matched_std if matched_std else int(round(source_info.get("avg_fps", src_fps)))
                     print(f"[KosMos Engine] VFR input detected ({source_info.get('avg_fps', 0):.2f} avg FPS, {r_rate:.2f} nominal FPS). Normalizing to native timeline at {effective_fps} FPS CFR.")
                 else:
-                    effective_fps = int(round(src_fps))
+                    effective_fps = src_fps
                     print(f"[KosMos Engine] Native CFR input ({effective_fps} FPS).")
                 target_fps = effective_fps
             else:
@@ -1550,10 +1571,10 @@ class BroadcastEnhancementPipeline:
                 "targetGamma": target_gamma,
                 "processingTimeMs": duration_ms,
                 "outputResolution": f"{final_w}x{final_h} ({res_label})",
-                "codec": "AVC/H.264 Broadcast Master High@L5.1",
-                "colorScience": f"{camera_preset_id} 3D LUT Tetrahedral",
+                "codec": final_info.get("codec_name"),
+                "colorScience": "No creative LUT" if camera_preset_id == "neutral" else f"{camera_preset_id} 3D LUT",
                 "modelTier": model_tier,
-                "neuralEngine": getattr(self, "last_active_tier_name", "Real-ESRGAN Compact (SRVGGNetCompact x4v3)" if "compact" in str(model_tier).lower() else "Real-ESRGAN Studio (RRDBNet x4plus)"),
+                "neuralEngine": getattr(self, "last_active_tier_name", None) if enable_real_esrgan else "Disabled",
                 "faceRestoration": f"GFPGAN v1.4 (Fidelity: {face_restore_fidelity})" if enable_face_restore else "Disabled",
                 "enableFaceRestore": enable_face_restore,
                 "faceRestoreFidelity": face_restore_fidelity if enable_face_restore else 0.0,
@@ -1632,6 +1653,8 @@ if HAS_MODAL and app is not None:
         face_restore_fidelity: float = 0.65,
         enable_real_esrgan: bool = True,
         model_tier: str = "compact",
+        is_preview: bool = False,
+        credit_cost: Optional[int] = None,
         unsharp_override: Optional[str] = None
     ) -> Dict[str, Any]:
         """Serverless GPU Modal worker entrypoint via Python SDK."""
@@ -1644,6 +1667,8 @@ if HAS_MODAL and app is not None:
                 "progress": 20,
                 "stage": "Modal A10G GPU worker active: Processing neural enhancement...",
                 "jobId": job,
+                "isPreview": is_preview,
+                "creditCost": credit_cost,
                 "updatedAt": int(time.time() * 1000)
             }
         except Exception as err:
@@ -1677,6 +1702,8 @@ if HAS_MODAL and app is not None:
                     "success": False,
                     "status": "failed",
                     "jobId": job,
+                    "isPreview": is_preview,
+                    "creditCost": credit_cost,
                     "error": str(e),
                     "failedAt": int(time.time() * 1000)
                 }
@@ -1694,6 +1721,8 @@ if HAS_MODAL and app is not None:
         # Update durable job dictionary
         try:
             jobs = modal.Dict.from_name("kosmos-ai-jobs", create_if_missing=True)
+            result["isPreview"] = is_preview
+            result["creditCost"] = credit_cost
             result["status"] = "completed"
             result["progress"] = 100
             result["stage"] = "Enhancement complete! Video ready for export."
@@ -1727,7 +1756,7 @@ if HAS_MODAL and app is not None:
         target_resolution: Optional[str] = "4K"
         target_fps: Optional[Any] = 60
         fps: Optional[Any] = 60
-        camera_preset_id: Optional[str] = "neutral"
+        camera_preset_id: Optional[str] = None
         camera_profile: Optional[str] = None
         lut: Optional[str] = None
         lut_file: Optional[str] = None
@@ -1748,6 +1777,7 @@ if HAS_MODAL and app is not None:
         enhancement_mode: Optional[str] = None
         enhancementMode: Optional[str] = None
         is_preview: Optional[bool] = False
+        credit_cost: Optional[int] = None
         unsharp_override: Optional[str] = None
         unsharpOverride: Optional[str] = None
         async_dispatch: Optional[bool] = False
@@ -1784,19 +1814,7 @@ if HAS_MODAL and app is not None:
             or data.get("lut_file")
             or "neutral"
         )
-        cam_lower = str(camera_preset_id).lower()
-        if "neutral" in cam_lower or "none" in cam_lower or "clean" in cam_lower or "uncolored" in cam_lower or "rec709" in cam_lower:
-            camera_preset_id = "neutral"
-        elif "arri" in cam_lower or "alexa" in cam_lower:
-            camera_preset_id = "arri-alexa-35"
-        elif "fuji" in cam_lower or "eterna" in cam_lower:
-            camera_preset_id = "fuji-eterna"
-        elif "panavision" in cam_lower or "dxl" in cam_lower:
-            camera_preset_id = "panavision-dxl2"
-        elif "leica" in cam_lower or "sl2" in cam_lower:
-            camera_preset_id = "leica-sl2s-cine"
-        else:
-            camera_preset_id = "neutral"
+        camera_preset_id = normalize_camera_preset(camera_preset_id)
 
         # 3. Resolve Target FPS (0 = Keep native source FPS)
         raw_fps = data.get("target_fps") if data.get("target_fps") is not None else data.get("fps")
@@ -1893,6 +1911,8 @@ if HAS_MODAL and app is not None:
                     "cameraPreset": camera_preset_id,
                     "targetFps": target_fps,
                     "modelTier": model_tier,
+                    "isPreview": bool(data.get("is_preview")),
+                    "creditCost": data.get("credit_cost"),
                     "estimatedSecondsRemaining": 25 if data.get("is_preview") else 55,
                 }
             except Exception as e:
@@ -1912,6 +1932,8 @@ if HAS_MODAL and app is not None:
                 face_restore_fidelity=face_restore_fidelity,
                 enable_real_esrgan=enable_real_esrgan,
                 model_tier=model_tier,
+                is_preview=bool(data.get("is_preview")),
+                credit_cost=data.get("credit_cost"),
                 unsharp_override=unsharp_override,
             )
             print(f"[KosMos Modal Endpoint] Successfully spawned detached GPU worker for Job {job_id}")

@@ -314,14 +314,14 @@ export const MediaMetadataPanel: React.FC<MediaMetadataPanelProps> = ({
                 <div className="flex items-center justify-between text-[10px] text-slate-400">
                   <span>Applied Color LUT</span>
                   <span className={`text-[10px] font-bold ${comparison.cameraLut.status === 'applied' ? 'text-amber-300' : 'text-slate-400'}`}>
-                    {comparison.cameraLut.status === 'applied' ? 'Applied' : 'Neutral Passthrough'}
+                    {({ applied: 'Applied', not_applied: 'Neutral', failed: 'Mismatch', unavailable: 'Unconfirmed' })[comparison.cameraLut.status]}
                   </span>
                 </div>
                 <div className="text-xs font-bold text-amber-200 mt-1 truncate">
-                  {comparison.cameraLut.appliedLutName || 'Neutral Rec.709 (No LUT)'}
+                  {comparison.cameraLut.appliedLutName || 'Unconfirmed'}
                 </div>
                 <div className="text-[10px] text-slate-400 truncate">
-                  {comparison.cameraLut.status === 'applied' ? 'Tetrahedral 3D Interpolation' : 'Clean / Uncolored'}
+                  {comparison.cameraLut.status === 'applied' ? 'Creative 3D LUT' : '—'}
                 </div>
               </div>
 
@@ -349,7 +349,7 @@ export const MediaMetadataPanel: React.FC<MediaMetadataPanelProps> = ({
                 AI Super-Resolution Engine
               </span>
               <div className="text-xs font-bold text-white">
-                {outputData.appliedModelName || 'Real-ESRGAN Compact (SRVGGNetCompact x4v3)'}
+                {outputData.appliedModelName || 'Unconfirmed'}
               </div>
               <p className="text-[10px] text-slate-400">
                 Neural texture synthesis & edge contrast enhancement
@@ -400,7 +400,7 @@ export const MediaMetadataPanel: React.FC<MediaMetadataPanelProps> = ({
             <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80">
               <span className="text-[10px] text-slate-500 uppercase font-semibold block">Aspect Ratio Handling</span>
               <span className="text-xs font-bold text-slate-200 truncate block">
-                {outputData.aspectRatioHandling === 'preserved' ? 'Preserved (Zero Distortion)' : outputData.aspectRatioHandling}
+                {outputData.aspectRatioHandling === 'preserved' ? 'Preserved' : outputData.aspectRatioHandling || 'Unconfirmed'}
               </span>
               <span className="text-[10px] text-slate-400 block mt-0.5">
                 DAR: {video.displayAspectRatio || `${(video.width / video.height).toFixed(2)}:1`}
@@ -410,10 +410,10 @@ export const MediaMetadataPanel: React.FC<MediaMetadataPanelProps> = ({
             <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80">
               <span className="text-[10px] text-slate-500 uppercase font-semibold block">Color Primaries & Gamut</span>
               <span className="text-xs font-bold text-slate-200 font-mono truncate block">
-                {video.colorPrimaries || 'Rec.709'} (8-bit YUV 4:2:0)
+                {video.colorPrimaries || 'Unspecified'}{video.bitDepth ? ` · ${video.bitDepth}-bit` : ''}
               </span>
               <span className="text-[10px] text-slate-400 block mt-0.5">
-                TRC: {video.colorTransfer || 'bt709'} / Range: tv
+                TRC: {video.colorTransfer || 'Unspecified'} / Range: {video.colorRange || 'Unspecified'}
               </span>
             </div>
 

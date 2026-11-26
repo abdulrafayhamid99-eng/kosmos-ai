@@ -11,15 +11,13 @@ export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 // Valid preset identifiers matching Phase 1 broadcast standards
-const CAMERA_PRESET_IDS = ['neutral', 'arri-alexa-35', 'fuji-eterna', 'panavision-dxl2', 'leica-sl2s-cine'] as const;
+const CAMERA_PRESET_IDS = new Set(CAMERA_PRESETS.map((preset) => preset.id));
 const VALID_FRAME_RATES = [0, 24, 25, 30, 48, 50, 60, 120, 240] as const;
 
 // Strict Zod schema for payload validation
 const upscalePayloadSchema = z.object({
   videoUrl: z.string().min(1, 'videoUrl is required (must be a valid URL or media stream reference)'),
-  cameraPresetId: z.enum(CAMERA_PRESET_IDS, {
-    message: `Invalid cameraPresetId. Expected one of: ${CAMERA_PRESET_IDS.join(', ')}`,
-  }),
+  cameraPresetId: z.string().refine((id) => CAMERA_PRESET_IDS.has(id), 'Unsupported camera look'),
   lutFile: z.string().min(1, 'lutFile identifier is required'),
   fps: z.coerce.number().refine(
     (val) => (VALID_FRAME_RATES as readonly number[]).includes(val),
@@ -39,7 +37,7 @@ const upscalePayloadSchema = z.object({
   faceRestoreFidelity: z.coerce.number().min(0).max(1).optional().default(0.65),
   enableRealEsrgan: z.boolean().optional().default(true),
   enableRifeInterpolation: z.boolean().optional().default(true),
-  modelTier: z.string().optional().default('compact'),
+  modelTier: z.enum(['compact', 'x4plus', 'auto']).default('compact'),
   enhancementMode: z.string().optional(),
   isPreview: z.boolean().optional().default(false),
   unsharpOverride: z.string().regex(/^unsharp=\d+:\d+:[0-9.]+(:\d+:\d+:[0-9.]+)?$/, 'Invalid unsharp filter expression').optional(),
@@ -61,7 +59,7 @@ type UpscalePayload = z.infer<typeof upscalePayloadSchema>;
  */
 function calculateCreditCost(fps: number, resolution: string, isPreview: boolean): number {
   if (isPreview) return 0; // Free preview clip
-  if (fps >= 120 || resolution === '8K') return 20; // Super slow-mo & 8K high compute tier
+  if (fps >= 120 || resolution.toUpperCase().includes('8K')) return 20; // Super slow-mo & 8K high compute tier
   return 10; // Standard 4K 60 FPS broadcast tier
 }
 
@@ -361,6 +359,7 @@ export async function POST(req: Request) {
         faceRestoreFidelity: formData.get('faceRestoreFidelity') || formData.get('face_restore_fidelity'),
         enableRealEsrgan: formData.get('enableRealEsrgan') !== 'false',
         enableRifeInterpolation: formData.get('enableRifeInterpolation') !== 'false',
+        modelTier: formData.get('modelTier') ?? formData.get('model_tier') ?? undefined,
         isPreview: formData.get('isPreview') === 'true',
         jobId: (formData.get('jobId') || formData.get('job_id')) as string,
       };
@@ -437,13 +436,14 @@ export async function POST(req: Request) {
       rawPayload.lut ||
       rawPayload.lut_file ||
       'neutral';
-    let cameraKey = String(rawCam).toLowerCase();
-    if (cameraKey.includes('neutral') || cameraKey.includes('none') || cameraKey.includes('clean') || cameraKey === 'rec709') cameraKey = 'neutral';
-    else if (cameraKey.includes('arri') || cameraKey.includes('alexa')) cameraKey = 'arri-alexa-35';
-    else if (cameraKey.includes('fuji') || cameraKey.includes('eterna')) cameraKey = 'fuji-eterna';
-    else if (cameraKey.includes('panavision') || cameraKey.includes('dxl')) cameraKey = 'panavision-dxl2';
-    else if (cameraKey.includes('leica') || cameraKey.includes('sl2')) cameraKey = 'leica-sl2s-cine';
-    else cameraKey = 'neutral';
+    let cameraKey = String(rawCam).trim().toLowerCase();
+    if (!CAMERA_PRESET_IDS.has(cameraKey)) {
+      if (cameraKey.includes('neutral') || cameraKey.includes('none') || cameraKey.includes('clean') || cameraKey === 'rec709') cameraKey = 'neutral';
+      else if (cameraKey.includes('arri') || cameraKey.includes('alexa')) cameraKey = 'arri-alexa-35';
+      else if (cameraKey.includes('fuji') || cameraKey.includes('eterna')) cameraKey = 'fuji-eterna';
+      else if (cameraKey.includes('panavision') || cameraKey.includes('dxl')) cameraKey = 'panavision-dxl2';
+      else if (cameraKey.includes('leica') || cameraKey.includes('sl2')) cameraKey = 'leica-sl2s-cine';
+    }
     rawPayload.cameraPresetId = cameraKey;
 
     // Auto-fill lutFile from cameraPresetId
@@ -669,18 +669,8 @@ export async function POST(req: Request) {
       face_restore_fidelity: data.faceRestoreFidelity ?? 0.65,
       enable_real_esrgan: Boolean(data.enableRealEsrgan ?? true),
       enable_rife: false,
-      model_tier:
-        data.modelTier === 'x4plus'
-          ? 'x4plus'
-          : data.modelTier === 'compact'
-            ? 'compact'
-            : data.modelTier === 'auto' || String(rawPayload.enhancementMode || '').toLowerCase().includes('social') || String(rawPayload.enhancementMode || '').toLowerCase().includes('whatsapp')
-              ? 'auto'
-              : (String(rawPayload.enhancementMode || '').toLowerCase().includes('studio') &&
-                !String(rawPayload.enhancementMode || '').toLowerCase().includes('compact') &&
-                !String(rawPayload.enhancementMode || '').toLowerCase().includes('fast'))
-                ? 'x4plus'
-                : 'compact',
+      model_tier: data.modelTier,
+      credit_cost: creditCost,
       is_preview: Boolean(data.isPreview ?? false),
       unsharp_override: data.unsharpOverride || data.unsharp_override || undefined,
       async_dispatch: true,

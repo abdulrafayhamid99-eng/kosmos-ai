@@ -174,3 +174,204 @@ html:not(.dark) footer {
   background-color: #f8fafc !important;
   border-color: #e2e8f0 !important;
 }
+/* Video studio */
+.studio-shell {
+  background: #0b1017;
+}
+
+.studio-hero {
+  position: relative;
+  display: flex;
+  min-height: clamp(23rem, 34vw, 32rem);
+  isolation: isolate;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid #263540;
+  border-radius: 1.25rem;
+  background: #101e27;
+  color: #f4f9fa;
+}
+
+.studio-hero-image {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: linear-gradient(90deg, #0d1720 4%, #0d1720f0 30%, #0d17205e 66%, #0d17201a), url('/studio-karakoram.webp');
+  background-position: center, center 56%;
+  background-size: cover;
+}
+
+.studio-hero-copy {
+  max-width: 43rem;
+  padding: clamp(1.5rem, 5vw, 4.5rem);
+}
+
+.studio-eyebrow, .studio-format {
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  font-size: .875rem;
+  font-weight: 600;
+}
+
+.studio-eyebrow {
+  color: #a4e4d7;
+  margin-bottom: 1.3rem;
+}
+
+.studio-hero h1 {
+  font-weight: 700;
+  font-size: clamp(2.45rem, 5.1vw, 5rem);
+  line-height: 1.02;
+  letter-spacing: -.065em;
+}
+
+.studio-hero h1 span {
+  color: #a9eddb;
+}
+
+.studio-intro {
+  margin: 1.25rem 0 1.6rem;
+  max-width: 28rem;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: #d3dee5;
+}
+
+.studio-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: .6rem;
+  border-radius: .65rem;
+  padding: .75rem 1rem;
+  color: #13252a;
+  background: #a9eddb;
+  font-weight: 700;
+}
+
+.studio-primary:hover {
+  background: #caf8eb;
+}
+
+.studio-hero-caption {
+  position: absolute;
+  right: 1.25rem;
+  bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  background: #0b151dbd;
+  color: #e1eaef;
+  border: 1px solid #ffffff24;
+  border-radius: .4rem;
+  padding: .35rem .6rem;
+  font-size: .75rem;
+}
+
+.studio-hero-caption span {
+  width: .35rem;
+  height: .35rem;
+  background: #a9eddb;
+  border-radius: 50%;
+}
+
+.studio-workspace-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1rem;
+  padding: 1.9rem 0 1rem;
+}
+
+.studio-workspace-head h2 {
+  font-size: clamp(1.35rem, 2.7vw, 2rem);
+  letter-spacing: -.035em;
+  font-weight: 700;
+}
+
+.studio-workspace-head p {
+  margin-top: .3rem;
+  color: #9dabb8;
+  font-size: .9375rem;
+}
+
+.studio-format {
+  color: #a9eddb;
+  white-space: nowrap;
+}
+
+.studio-shell .studio-panel,
+.studio-shell .studio-upload {
+  border-color: #2b3a47;
+}
+
+html:not(.dark) .studio-shell {
+  color: #182835;
+  background: #f4f7f8;
+}
+
+html:not(.dark) .studio-format {
+  color: #166758;
+}
+
+@media (max-width: 639px) {
+  .studio-hero-image {
+    background-image: linear-gradient(90deg, #0d1720ee, #0d172085), url('/studio-karakoram.webp');
+    background-position: center, 64% center;
+  }
+
+  .studio-hero-copy {
+    padding-bottom: 3rem;
+  }
+
+  .studio-workspace-head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: .6rem;
+  }
+
+  .studio-hero-caption {
+    right: .65rem;
+    bottom: .65rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-shell *, .studio-shell *::before, .studio-shell *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+.studio-monitor {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: .55rem;
+  min-height: 13rem;
+  aspect-ratio: 16 / 9;
+  padding: 1.25rem;
+  border: 1px solid #263540;
+  border-radius: .75rem;
+  background: radial-gradient(ellipse at 50% 20%, #152a33, #0a131b 72%);
+  color: #e0eaed;
+  text-align: center;
+}
+
+.studio-monitor p {
+  font-weight: 600;
+}
+
+.studio-monitor span {
+  max-width: 18rem;
+  font-size: .875rem;
+  color: #9fb0bd;
+}
+
+.studio-monitor-icon {
+  margin-bottom: .35rem;
+  padding: .5rem;
+  border: 1px solid #355851;
+  border-radius: .7rem;
+  color: #a9eddb;
+}

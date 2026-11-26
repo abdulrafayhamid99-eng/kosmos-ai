@@ -11,31 +11,27 @@ export async function POST(req: Request) {
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
     const stripeKey = process.env.STRIPE_SECRET_KEY?.trim();
 
+    if (!stripeKey || !webhookSecret) {
+      return NextResponse.json({ error: 'Payment verification is not configured' }, { status: 503 });
+    }
+    if (!sig) {
+      return NextResponse.json({ error: 'Stripe signature is required' }, { status: 400 });
+    }
+
+    const stripe = new Stripe(stripeKey, { apiVersion: '2024-04-10' as any });
     let event: Stripe.Event;
-
-    if (stripeKey && webhookSecret && sig) {
-      const stripe = new Stripe(stripeKey, {
-        apiVersion: '2024-04-10' as any,
-      });
-
-      try {
-        event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
-      } catch (err: any) {
-        console.error('[Stripe Webhook Signature Error]:', err.message);
-        return NextResponse.json({ error: `Webhook signature error: ${err.message}` }, { status: 400 });
-      }
-    } else {
-      // Parse payload if testing without webhook signing secret
-      try {
-        event = JSON.parse(rawBody) as Stripe.Event;
-      } catch {
-        return NextResponse.json({ error: 'Invalid webhook JSON body' }, { status: 400 });
-      }
+    try {
+      event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+    } catch {
+      return NextResponse.json({ error: 'Invalid Stripe signature' }, { status: 400 });
     }
 
     // Handle successful checkout completion
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
+      if (session.payment_status !== 'paid') {
+        return NextResponse.json({ received: true });
+      }
       const metadata = session.metadata || {};
       const userId = metadata.userId;
       const creditsToAdd = parseInt(metadata.creditsToAdd || '0', 10);

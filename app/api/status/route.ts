@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
                 job = createJob({
                   id: jobId,
                   userId: modalData.userId || null,
-                  creditCost: modalData.creditCost || 10,
+                  creditCost: modalData.creditCost ?? (modalData.isPreview ? 0 : 10),
                   params: {
                     videoUrl: '',
                     resolution: modalData.outputResolution || '4K',
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
                     fieldMode: 'progressive',
                     shutterFix: false,
                     targetGamma: 'rec709',
-                    isPreview: false,
+                    isPreview: modalData.isPreview ?? false,
                   },
                 });
               }
@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
               progress: isCompleted ? 100 : (modalData.progress ?? (job ? job.progress : 25)),
               stage: modalData.stage || (isCompleted ? 'Enhancement complete! Video ready for export.' : 'Processing on Modal GPU...'),
               estimatedSecondsRemaining: isCompleted ? 0 : (modalData.estimatedSecondsRemaining ?? (job ? job.estimatedSecondsRemaining : 30)),
-              creditCost: job?.creditCost || modalData.creditCost || 10,
+              creditCost: job?.creditCost ?? modalData.creditCost ?? (modalData.isPreview ? 0 : 10),
               creditsReserved: job?.creditsReserved ?? true,
               creditsDeducted: job?.creditsDeducted ?? isCompleted,
               result: isCompleted ? modalData : (job?.result || null),
