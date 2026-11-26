@@ -3,7 +3,6 @@
 import React from 'react';
 import { SignInButton } from '@clerk/nextjs';
 import { X, Sparkles, CheckCircle2, Shield } from 'lucide-react';
-import { TEMPORARILY_HIDE_DURATION_LIMIT } from '@/lib/quota';
 
 interface GoogleAuthModalProps {
   isOpen: boolean;
@@ -17,7 +16,7 @@ export default function GoogleAuthModal({
   isOpen,
   onClose,
   title = "Unlock Full AI Video Processing",
-  subtitle = "Sign in with Google to activate your 3 daily free AI clips & save project history",
+  subtitle = "Sign in to render a short comparison preview and manage your exports.",
 }: GoogleAuthModalProps) {
   if (!isOpen) return null;
 
@@ -54,12 +53,7 @@ export default function GoogleAuthModal({
           <div className="flex items-center gap-2.5 text-slate-300">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
             <span>
-              {TEMPORARILY_HIDE_DURATION_LIMIT ? (
-                <strong>3 Free AI Clips</strong>
-              ) : (
-                <strong>3 Free AI Clips (10s each)</strong>
-              )}{' '}
-              every 24 hours
+              <strong>Five-second comparison preview</strong>
             </span>
           </div>
           <div className="flex items-center gap-2.5 text-slate-300">
@@ -68,11 +62,11 @@ export default function GoogleAuthModal({
           </div>
           <div className="flex items-center gap-2.5 text-slate-300">
             <CheckCircle2 className="w-4 h-4 text-violet-400 flex-shrink-0" />
-            <span><strong>Persistent Cloud History</strong> & instant stream access</span>
+            <span><strong>Private render downloads</strong> for your account</span>
           </div>
           <div className="flex items-center gap-2.5 text-slate-300">
             <CheckCircle2 className="w-4 h-4 text-amber-400 flex-shrink-0" />
-            <span><strong>Cinema Camera Profiles:</strong> ARRI, RED & Sony color science</span>
+            <span><strong>Creative looks</strong> inspired by ARRI, RED and Sony footage</span>
           </div>
         </div>
 
@@ -110,9 +104,7 @@ export default function GoogleAuthModal({
           <div className="flex items-center justify-center gap-2 pt-2 text-[11px] text-slate-500">
             <Shield className="w-3.5 h-3.5" />
             <span>
-              {TEMPORARILY_HIDE_DURATION_LIMIT
-                ? 'Clerk OAuth • 3 free clips every 24 hours'
-                : 'Clerk OAuth • 3 free 10-second clips every 24 hours'}
+              Private account access through Clerk
             </span>
           </div>
         </div>

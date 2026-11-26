@@ -1239,7 +1239,8 @@ class BroadcastEnhancementPipeline:
         face_restore_fidelity: float = 0.65,
         enable_real_esrgan: bool = True,
         model_tier: str = "compact",
-        unsharp_override: Optional[str] = None
+        unsharp_override: Optional[str] = None,
+        is_preview: bool = False
     ) -> Dict[str, Any]:
         """
         Executes end-to-end Broadcast GPU Processing Pipeline:
@@ -1265,7 +1266,7 @@ class BroadcastEnhancementPipeline:
             if input_video_url.startswith("http://") or input_video_url.startswith("https://"):
                 import requests
                 print(f"[KosMos Engine] Downloading source video from {input_video_url}...")
-                resp = requests.get(input_video_url, stream=True, timeout=60)
+                resp = requests.get(input_video_url, stream=True, timeout=60, allow_redirects=False)
                 resp.raise_for_status()
                 with open(raw_input, "wb") as f:
                     for chunk in resp.iter_content(chunk_size=8192):
@@ -1279,6 +1280,15 @@ class BroadcastEnhancementPipeline:
             else:
                 shutil.copyfile(input_video_url, raw_input)
             t_input_done = time.time()
+
+            if is_preview and self.inspect_video(raw_input)["duration"] > 5:
+                excerpt = os.path.join(temp_dir, "preview_input.mp4")
+                subprocess.run([
+                    "ffmpeg", "-v", "error", "-i", raw_input, "-t", "5",
+                    "-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libx264", "-preset", "fast",
+                    "-c:a", "aac", excerpt,
+                ], check=True)
+                raw_input = excerpt
 
             # Inspect input dimensions, audio, and frame rate geometry
             source_info = self.inspect_video(raw_input)
@@ -1609,27 +1619,9 @@ def get_pipeline() -> BroadcastEnhancementPipeline:
 # 4. MODAL ENTRYPOINT FUNCTION
 # ==============================================================================
 if HAS_MODAL and app is not None:
-    # Resolve optional AWS S3 credentials gracefully without failing if missing
-    pipeline_secrets = []
-    try:
-        modal_client = modal.Client.from_env()
-        existing_secrets = [s.name for s in modal.Secret.objects.list(client=modal_client)]
-        if "aws-s3-credentials" in existing_secrets:
-            pipeline_secrets.append(modal.Secret.from_name("aws-s3-credentials"))
-        else:
-            # Check local environment variables for AWS credentials
-            env_s3 = {}
-            for k in ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION", "AWS_S3_BUCKET"]:
-                if os.environ.get(k):
-                    env_s3[k] = os.environ[k]
-            if env_s3:
-                pipeline_secrets.append(modal.Secret.from_dict(env_s3))
-    except Exception:
-        # Fallback to attaching directly if authenticated workspace query is unavailable
-        try:
-            pipeline_secrets.append(modal.Secret.from_name("aws-s3-credentials"))
-        except Exception:
-            pass
+    # The private Modal volume is sufficient for authenticated downloads.
+    s3_secret_name = os.environ.get("KOSMOS_MODAL_S3_SECRET_NAME")
+    pipeline_secrets = [modal.Secret.from_name(s3_secret_name)] if s3_secret_name else []
 
     @app.function(
         image=pipeline_image,
@@ -1674,9 +1666,8 @@ if HAS_MODAL and app is not None:
         except Exception as err:
             print(f"[KosMos Modal Worker] Note on progress tracking update: {err}")
 
-        pipeline = get_pipeline()
         try:
-            result = pipeline.run_full_pipeline(
+            result = get_pipeline().run_full_pipeline(
                 input_video_url=video_url,
                 camera_preset_id=camera_preset_id,
                 target_fps=target_fps,
@@ -1690,8 +1681,12 @@ if HAS_MODAL and app is not None:
                 face_restore_fidelity=face_restore_fidelity,
                 enable_real_esrgan=enable_real_esrgan,
                 model_tier=model_tier,
-                unsharp_override=unsharp_override
+                unsharp_override=unsharp_override,
+                is_preview=is_preview
             )
+            if not os.path.isfile(f"/renders/{job}_master.mp4"):
+                raise RuntimeError("The rendered master could not be saved to the private volume")
+            kosmos_renders.commit()
         except Exception as e:
             import traceback
             tb = traceback.format_exc()
@@ -1710,13 +1705,6 @@ if HAS_MODAL and app is not None:
             except Exception:
                 pass
             raise e
-
-        # Commit durable renders volume to guarantee cross-container file availability
-        try:
-            kosmos_renders.commit()
-            print(f"[KosMos Modal Worker] Committed rendered assets for Job {job} to persistent volume.")
-        except Exception as ve:
-            print(f"[KosMos Modal Worker] Volume commit note: {ve}")
 
         # Update durable job dictionary
         try:
@@ -1791,7 +1779,7 @@ if HAS_MODAL and app is not None:
         secrets=pipeline_secrets,
         volumes={"/renders": kosmos_renders}
     )
-    @modal.fastapi_endpoint(method="POST")
+    @modal.fastapi_endpoint(method="POST", requires_proxy_auth=True)
     def process_video_endpoint(req: VideoProcessRequest) -> Dict[str, Any]:
         """Serverless GPU Modal HTTP webhook entrypoint callable from Next.js dispatcher."""
         data = req.dict() if hasattr(req, "dict") else (req.__dict__ if hasattr(req, "__dict__") else {})
@@ -1989,7 +1977,7 @@ if HAS_MODAL and app is not None:
                     raise e
 
     @app.function(image=pipeline_image, timeout=60)
-    @modal.fastapi_endpoint(method="GET")
+    @modal.fastapi_endpoint(method="GET", requires_proxy_auth=True)
     def get_status_endpoint(job_id: str = "") -> Dict[str, Any]:
         """Durable job status query endpoint backed by Modal Dict."""
         from fastapi.responses import JSONResponse
@@ -2020,7 +2008,7 @@ if HAS_MODAL and app is not None:
         volumes={"/renders": kosmos_renders},
         timeout=600
     )
-    @modal.fastapi_endpoint(method="GET")
+    @modal.fastapi_endpoint(method="GET", requires_proxy_auth=True)
     def download_video_endpoint(job_id: str = "", type: str = "master", download: bool = False):
         """Universal video delivery endpoint streaming from persistent Modal Volume with Range support."""
         from fastapi.responses import FileResponse, JSONResponse
@@ -2047,7 +2035,7 @@ if HAS_MODAL and app is not None:
 
         headers = {
             "Accept-Ranges": "bytes",
-            "Cache-Control": "public, max-age=86400",
+            "Cache-Control": "private, no-store",
         }
         filename = f"KosMos_Enhanced_{clean_id}_{clean_type}.mp4"
         if download:
@@ -2057,6 +2045,8 @@ if HAS_MODAL and app is not None:
     @app.function(volumes={"/renders": kosmos_renders}, timeout=300)
     def fetch_rendered_file(filename: str) -> bytes:
         import os
+        if os.path.basename(filename) != filename:
+            raise ValueError("Expected a render filename")
         file_path = f"/renders/{filename}"
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found on volume: {file_path}")

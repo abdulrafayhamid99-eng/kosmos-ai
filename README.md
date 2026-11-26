@@ -19,7 +19,7 @@ KosMos AI is a state-of-the-art neural video enhancement platform engineered for
    ```
 
 2. Setup environment variables:
-   Copy `.env.example` to `.env.local` and add your Replicate API key:
+   Copy `.env.example` to `.env.local`, then configure Clerk, PostgreSQL, Stripe and the protected Modal endpoints using the [staging instructions](db/README.md).
    ```bash
    cp .env.example .env.local
    ```

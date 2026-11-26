@@ -240,12 +240,14 @@ export default function ComparisonSlider({
       window.addEventListener('mouseup', handleMouseUp);
       window.addEventListener('touchmove', handleTouchMove);
       window.addEventListener('touchend', handleMouseUp);
+      window.addEventListener('touchcancel', handleMouseUp);
     }
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('touchmove', handleTouchMove);
       window.removeEventListener('touchend', handleMouseUp);
+      window.removeEventListener('touchcancel', handleMouseUp);
     };
   }, [isDragging, handleMouseMove, handleMouseUp, handleTouchMove]);
 
@@ -639,11 +641,21 @@ export default function ComparisonSlider({
         </div>
       </div>
 
-      {/* Helper beneath slider */}
-      <div className="flex items-center justify-between text-[11px] text-slate-500 px-1">
-        <span>Drag the divider to compare both videos.</span>
-        <span>Drag right for Raw Input (1:1 Natural Pixels) 👉</span>
-      </div>
+      <label className="grid gap-2 px-1 text-sm text-slate-300">
+        <span className="flex justify-between gap-3">
+          <span>Comparison split</span>
+          <span>{Math.round(sliderPosition)}% original</span>
+        </span>
+        <input
+          type="range"
+          aria-label="Comparison split"
+          min={0}
+          max={100}
+          value={sliderPosition}
+          onChange={(event) => setSliderPosition(Number(event.target.value))}
+          className="w-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-teal-300"
+        />
+      </label>
     </div>
   );
 }

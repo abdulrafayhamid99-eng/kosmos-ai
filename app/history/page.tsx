@@ -43,44 +43,16 @@ export default function HistoryPage() {
 
   const loadHistory = () => {
     try {
-      const stored = localStorage.getItem('kosmos_video_history');
-      if (stored) {
-        setHistory(JSON.parse(stored));
-      } else {
-        // Provide sample starter history if completely empty
-        const sampleHistory: HistoryItem[] = [
-          {
-            id: 'sample-001',
-            filename: 'Cinematic_Drone_Sunset.mp4',
-            fileSizeFormatted: '48.2 MB',
-            originalDuration: '00:14',
-            resolution: '4K Ultra HD',
-            fps: '120 FPS',
-            preset: 'Cinematic Motion (60 FPS - 240 FPS Interpolation)',
-            timestamp: new Date(Date.now() - 3600000 * 2).toLocaleString(),
-            processingTimeFormatted: '1.42s',
-            videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-            originalVideoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-            userId: 'guest',
-          },
-          {
-            id: 'sample-002',
-            filename: 'Mobile_Wildlife_Action.mp4',
-            fileSizeFormatted: '18.7 MB',
-            originalDuration: '00:08',
-            resolution: '8K Cinematic',
-            fps: '240 FPS',
-            preset: 'Slow-Mo Cinema (120 FPS Extreme Smooth)',
-            timestamp: new Date(Date.now() - 3600000 * 24).toLocaleString(),
-            processingTimeFormatted: '2.10s',
-            videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
-            originalVideoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
-            userId: 'guest',
-          },
-        ];
-        localStorage.setItem('kosmos_video_history', JSON.stringify(sampleHistory));
-        setHistory(sampleHistory);
+      if (!currentUserId) {
+        setHistory([]);
+        setSelectedForComparison(null);
+        return;
       }
+      const stored = localStorage.getItem(`kosmos_video_history_${currentUserId}`);
+      const legacy = localStorage.getItem('kosmos_video_history');
+      const records: HistoryItem[] = JSON.parse(stored ?? legacy ?? '[]');
+      setHistory(records.filter((item) => item.userId === currentUserId && !item.id.startsWith('sample-')));
+      setSelectedForComparison(null);
     } catch (e) {
       console.error('Error loading history:', e);
     }
@@ -89,13 +61,13 @@ export default function HistoryPage() {
   const deleteItem = (id: string) => {
     const updated = history.filter((item) => item.id !== id);
     setHistory(updated);
-    localStorage.setItem('kosmos_video_history', JSON.stringify(updated));
+    if (currentUserId) localStorage.setItem(`kosmos_video_history_${currentUserId}`, JSON.stringify(updated));
   };
 
   const clearAllHistory = () => {
     if (confirm('Are you sure you want to clear your local render history?')) {
       setHistory([]);
-      localStorage.removeItem('kosmos_video_history');
+      if (currentUserId) localStorage.setItem(`kosmos_video_history_${currentUserId}`, '[]');
     }
   };
 
@@ -427,6 +399,8 @@ export default function HistoryPage() {
               presetName={selectedForComparison.preset}
               resolution={selectedForComparison.resolution}
               fps={selectedForComparison.fps}
+              hasRenderedOutput
+              onExport={() => void handleDownload(selectedForComparison)}
             />
 
             <div className="mt-4 flex justify-end gap-2">

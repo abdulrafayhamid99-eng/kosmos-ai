@@ -4,8 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  SignedIn,
-  SignedOut,
+  Show,
   SignInButton,
   UserButton,
   useUser,
@@ -101,7 +100,7 @@ export default function Navbar() {
               </span>
             </div>
             <span className="hidden md:block text-[10px] text-slate-400 tracking-wide">
-              Next-Gen AI Video Upscaler & Interpolation
+              Video enhancement studio
             </span>
           </div>
         </Link>
@@ -145,23 +144,23 @@ export default function Navbar() {
           </button>
 
           {/* Clerk Auth Section */}
-          <SignedOut>
+          <Show when="signed-out">
             <SignInButton mode="modal">
               <button className="px-3 py-1.5 sm:px-4 sm:py-2 bg-teal-300 hover:bg-teal-200 text-slate-950 text-sm font-semibold rounded-full shadow transition whitespace-nowrap">
                 Sign In
               </button>
             </SignInButton>
-          </SignedOut>
-          <SignedIn>
+          </Show>
+          <Show when="signed-in">
             <div className="flex items-center gap-2 sm:gap-3">
               {!TEMPORARILY_HIDE_DAILY_LIMIT && (
                 <span className="hidden sm:inline-block text-xs bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2.5 py-1 rounded-full whitespace-nowrap">
                   3 Free Clips / 24h
                 </span>
               )}
-              <UserButton afterSignOutUrl="/"/>
+              <UserButton />
             </div>
-          </SignedIn>
+          </Show>
         </div>
 
       </div>

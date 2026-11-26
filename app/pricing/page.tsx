@@ -5,7 +5,8 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import RefillModal from '@/components/RefillModal';
 import { useUser } from '@clerk/nextjs';
-import { addCredits, getUserCredits } from '@/lib/credits';
+import { useStudioBalance } from '@/lib/useStudioBalance';
+import { studioPlan } from '@/lib/studioPlans';
 import { Check, Sparkles, Zap, Shield, ArrowRight, HelpCircle, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function PricingPage() {
@@ -15,72 +16,36 @@ export default function PricingPage() {
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
   const [showRefillModal, setShowRefillModal] = useState<boolean>(false);
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
-  const [credits, setCredits] = useState<number>(() => getUserCredits(currentUserId));
+  const { credits, refresh } = useStudioBalance(currentUserId);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
 
-  // Sync credits with user ID
   useEffect(() => {
-    setCredits(getUserCredits(currentUserId));
-  }, [currentUserId]);
-
-  // Handle return from Stripe checkout
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const urlParams = new URLSearchParams(window.location.search);
-    const paymentStatus = urlParams.get('payment_status');
-    const creditsParam = urlParams.get('credits');
-    const planParam = urlParams.get('plan');
-
-    if (paymentStatus === 'success' && creditsParam) {
-      const amount = parseInt(creditsParam, 10);
-      if (!isNaN(amount) && amount > 0) {
-        const newTotal = addCredits(amount, currentUserId);
-        setCredits(newTotal);
-        setNotification({
-          type: 'success',
-          message: `Payment successful! Added +${amount} render credits (${planParam || 'Package'}) to your account.`,
-        });
-        window.history.replaceState({}, '', '/pricing');
-      }
-    } else if (paymentStatus === 'cancelled') {
-      setNotification({
-        type: 'info',
-        message: 'Checkout was cancelled. No charges were made.',
-      });
+    const status = new URLSearchParams(window.location.search).get('payment_status');
+    if (status === 'success') {
+      setNotification({ type: 'info', message: 'Credits appear after Stripe confirms payment.' });
+      const timer = window.setTimeout(() => void refresh(), 1800);
+      window.history.replaceState({}, '', '/pricing');
+      return () => window.clearTimeout(timer);
+    }
+    if (status === 'cancelled') {
+      setNotification({ type: 'info', message: 'Checkout was cancelled.' });
       window.history.replaceState({}, '', '/pricing');
     }
-  }, [currentUserId]);
+  }, [refresh]);
 
-  const handleCheckout = async (plan: { name: string; creditsIncluded: number; priceNum: number; isSubscription?: boolean }) => {
+  const handleCheckout = async (planId: string, label: string) => {
     try {
-      setLoadingPlan(plan.name);
+      setLoadingPlan(label);
       const res = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          credits: plan.creditsIncluded,
-          planName: plan.name,
-          priceUsd: plan.priceNum,
-          userId: user?.id || 'guest',
-          userEmail: user?.primaryEmailAddress?.emailAddress || undefined,
-          isSubscription: !!plan.isSubscription,
-        }),
+        body: JSON.stringify({ planId }),
       });
-
       const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to initiate payment checkout.');
-      }
-
-      if (data.url) {
-        window.location.href = data.url;
-      }
-    } catch (err: any) {
-      console.error('Checkout error:', err);
-      setNotification({
-        type: 'error',
-        message: err.message || 'Could not start checkout session. Please try again.',
-      });
+      if (!res.ok || !data.url) throw new Error(data.error || 'Checkout is unavailable.');
+      window.location.assign(data.url);
+    } catch (err) {
+      setNotification({ type: 'error', message: err instanceof Error ? err.message : 'Checkout is unavailable.' });
     } finally {
       setLoadingPlan(null);
     }
@@ -88,62 +53,47 @@ export default function PricingPage() {
 
   const plans = [
     {
+      id: 'starter',
       name: 'Starter Creator',
       tagline: 'Ideal for content creators and YouTubers',
-      price: billingPeriod === 'monthly' ? '$19' : '$15',
-      priceNum: billingPeriod === 'monthly' ? 19 : 15,
-      period: '/ month',
       creditsIncluded: 300,
       badge: null,
       accent: 'border-slate-800 hover:border-cyan-500/50',
       buttonBg: 'bg-slate-800 hover:bg-slate-700 text-white',
       features: [
-        '300 Render Credits / mo',
         'Upscale up to 4K Ultra HD',
-        'Frame Interpolation to 60 FPS',
+        'Frame-rate conversion to 60 FPS',
         'Noise & Compression Repair',
-        'Standard GPU Render Queue',
-        'MP4 & WebM Web Export',
+        'H.264 MP4 export',
       ],
     },
     {
+      id: 'studio',
       name: 'Studio Pro',
       tagline: 'Engineered for video editors and commercial suites',
-      price: billingPeriod === 'monthly' ? '$49' : '$39',
-      priceNum: billingPeriod === 'monthly' ? 49 : 39,
-      period: '/ month',
       creditsIncluded: 1200,
       badge: 'Most Popular',
       accent: 'border-violet-500/80 shadow-[0_0_35px_-5px_rgba(139,92,246,0.3)]',
       buttonBg: 'bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-white shadow-lg shadow-violet-900/50',
       features: [
-        '1,200 Render Credits / mo',
         '8K Resolution Export Dimensions',
         'Frame-Rate Conversion up to 120 FPS',
         'Real-ESRGAN Texture Enhancement',
-        'Priority Cloud GPU Allocation',
-        'Broadcast Master H.264 & WebM Export',
+        'H.264 MP4 master',
         'Interactive Split Comparison Tool',
       ],
     },
     {
+      id: 'cinema',
       name: 'Cinema Enterprise',
       tagline: 'For broadcast newsrooms & feature film studios',
-      price: billingPeriod === 'monthly' ? '$149' : '$119',
-      priceNum: billingPeriod === 'monthly' ? 149 : 119,
-      period: '/ month',
       creditsIncluded: 5000,
       badge: 'Unrestricted Power',
       accent: 'border-emerald-500/60 shadow-[0_0_35px_-5px_rgba(16,185,129,0.25)]',
       buttonBg: 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/40',
       features: [
-        '5,000 Render Credits / mo',
         '8K Dimensions & 240 FPS Conversion Mode',
-        'Dedicated Cloud Processing Queue',
-        'Batch Video Processing API',
         'Broadcast Rec.709 & Flat-Log Support',
-        'Custom Fine-Tuned Film Grain Models',
-        '24/7 Dedicated Support',
       ],
     },
   ];
@@ -151,7 +101,7 @@ export default function PricingPage() {
   const faqs = [
     {
       q: 'How are render credits calculated?',
-      a: '1 second of 1080p 60FPS video enhancement uses ~1 credit. Upscaling to 4K uses ~2 credits/sec, while high-compute 8K or 240FPS export uses ~4 credits/sec.',
+      a: 'A standard render costs 10 credits. An 8K render or a target of 120 FPS or higher costs 20. A short preview costs 0.',
     },
     {
       q: 'Do my purchased credits expire?',
@@ -163,7 +113,7 @@ export default function PricingPage() {
     },
     {
       q: 'Can I test before subscribing?',
-      a: 'Yes! Every new studio session receives free daily quota and test credits, and you can generate interactive split-slider previews anytime.',
+      a: 'Sign in to generate a short preview before spending credits.',
     },
   ];
 
@@ -219,7 +169,7 @@ export default function PricingPage() {
           {/* Current balance indicator */}
           <div className="mt-4 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs text-slate-400">
             <span>Your Active Balance:</span>
-            <strong className="text-cyan-400 font-mono font-bold">{credits} Credits</strong>
+            <strong className="text-cyan-400 font-mono font-bold">{credits === null ? 'Unavailable' : `${credits} credits`}</strong>
           </div>
 
           {/* Billing Switch */}
@@ -244,7 +194,7 @@ export default function PricingPage() {
             >
               <span>Yearly Billing</span>
               <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/30">
-                Save 20%
+                Annual pricing
               </span>
             </button>
           </div>
@@ -269,14 +219,14 @@ export default function PricingPage() {
 
                 <div className="my-6 flex items-baseline gap-1">
                   <span className="text-4xl sm:text-5xl font-black text-white font-display tracking-tight">
-                    {plan.price}
+                    {`$${(studioPlan(`${plan.id}-${billingPeriod}`)!.cents / 100).toLocaleString('en-US')}`}
                   </span>
-                  <span className="text-xs text-slate-400">{plan.period}</span>
+                  <span className="text-xs text-slate-400">{billingPeriod === 'monthly' ? '/ month' : '/ year'}</span>
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 mb-6 flex items-center justify-between text-xs">
                   <span className="text-slate-400">Included Credits:</span>
-                  <span className="font-bold text-cyan-400">{plan.creditsIncluded} credits/mo</span>
+                  <span className="font-bold text-cyan-400">{studioPlan(`${plan.id}-${billingPeriod}`)!.credits.toLocaleString('en-US')} credits per billing cycle</span>
                 </div>
 
                 <ul className="space-y-3 text-xs text-slate-300">
@@ -293,7 +243,7 @@ export default function PricingPage() {
 
               <div className="mt-8 pt-6 border-t border-slate-800/80">
                 <button
-                  onClick={() => handleCheckout({ ...plan, isSubscription: true })}
+                  onClick={() => handleCheckout(`${plan.id}-${billingPeriod}`, plan.name)}
                   disabled={loadingPlan === plan.name}
                   className={`w-full py-3 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 ${plan.buttonBg} disabled:opacity-60`}
                 >
@@ -305,7 +255,7 @@ export default function PricingPage() {
                   ) : (
                     <>
                       <Sparkles className="w-4 h-4" />
-                      <span>Activate {plan.name} (+{plan.creditsIncluded} Cr)</span>
+                      <span>Choose {plan.name}</span>
                     </>
                   )}
                 </button>
@@ -329,7 +279,7 @@ export default function PricingPage() {
 
           <div className="flex flex-wrap gap-3">
             <button
-              onClick={() => handleCheckout({ name: '100 Credits Pack', creditsIncluded: 100, priceNum: 9, isSubscription: false })}
+              onClick={() => handleCheckout('creator-pack', '100 Credits Pack')}
               disabled={loadingPlan === '100 Credits Pack'}
               className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-white transition flex items-center gap-1.5 disabled:opacity-60"
             >
@@ -341,7 +291,7 @@ export default function PricingPage() {
               <span>+100 Credits ($9)</span>
             </button>
             <button
-              onClick={() => handleCheckout({ name: '500 Credits Pack', creditsIncluded: 500, priceNum: 39, isSubscription: false })}
+              onClick={() => handleCheckout('studio-pack', '500 Credits Pack')}
               disabled={loadingPlan === '500 Credits Pack'}
               className="px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-xs font-semibold text-white transition flex items-center gap-1.5 shadow-lg shadow-violet-900/30 disabled:opacity-60"
             >
@@ -395,7 +345,6 @@ export default function PricingPage() {
         isOpen={showRefillModal}
         onClose={() => setShowRefillModal(false)}
         currentCredits={credits}
-        onCreditsUpdated={(c) => setCredits(c)}
       />
     </div>
   );

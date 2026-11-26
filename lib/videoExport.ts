@@ -114,7 +114,8 @@ export async function downloadEnhancedVideo({
   if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
     try {
       onProgress?.('Streaming master video via secure download channel...');
-      const proxyUrl = `/api/download?url=${encodeURIComponent(videoUrl)}&filename=${encodeURIComponent(cleanFilename)}`;
+      if (!videoUrl.startsWith('/api/download?job_id=')) throw new Error('This download link is unavailable.');
+      const proxyUrl = videoUrl;
       const proxyRes = await fetch(proxyUrl);
       if (proxyRes.ok) {
         const blob = await proxyRes.blob();

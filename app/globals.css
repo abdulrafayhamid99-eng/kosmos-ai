@@ -375,3 +375,10 @@ html:not(.dark) .studio-format {
   border-radius: .7rem;
   color: #a9eddb;
 }
+
+@media (min-width: 1024px) {
+  .studio-hero-copy {
+    max-width: 51rem;
+    padding: clamp(2.5rem, 4vw, 3.75rem);
+  }
+}

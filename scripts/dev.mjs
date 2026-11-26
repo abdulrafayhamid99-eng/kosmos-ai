@@ -5,7 +5,7 @@ const next = fileURLToPath(new URL('../node_modules/next/dist/bin/next', import.
 const args = process.argv.slice(2)
   .filter((arg) => arg !== '--strictPort')
   .map((arg) => arg === '--host' ? '--hostname' : arg);
-const server = spawn(process.execPath, [next, 'dev', ...args], { stdio: 'inherit' });
+const server = spawn(process.execPath, [next, 'dev', '--webpack', ...args], { stdio: 'inherit' });
 
 server.on('exit', (code) => {
   process.exitCode = code ?? 1;

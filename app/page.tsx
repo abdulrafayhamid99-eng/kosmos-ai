@@ -22,14 +22,7 @@ import {
 import { probeVideoFile } from '@/lib/mediaProbe';
 import { downloadEnhancedVideo } from '@/lib/videoExport';
 import { trimVideoForCloudProcessing } from '@/lib/videoTrimmer';
-import {
-  getUserCredits,
-  setUserCredits,
-  deductUserCredits,
-  holdUserCredits,
-  commitHeldUserCredits,
-  releaseHeldUserCredits,
-} from '@/lib/credits';
+import { useStudioBalance } from '@/lib/useStudioBalance';
 import {
   UploadCloud,
   Sparkles,
@@ -97,7 +90,7 @@ export default function Home() {
   const [showQuotaModal, setShowQuotaModal] = useState<boolean>(false);
 
   // Credits & UI State
-  const [credits, setCredits] = useState<number>(100);
+  const { credits, refresh: refreshCredits } = useStudioBalance(user?.id);
   const [showRefillModal, setShowRefillModal] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [isRendering, setIsRendering] = useState<boolean>(false);
@@ -111,7 +104,7 @@ export default function Home() {
 
   const [showGoogleAuthModal, setShowGoogleAuthModal] = useState<boolean>(false);
   const [authModalSubtitle, setAuthModalSubtitle] = useState<string>(
-    'Sign in with Google to activate your 3 daily free AI clips & save project history'
+    'Sign in to render a short preview and manage your exports.'
   );
 
   // Rendered Output State
@@ -236,20 +229,7 @@ export default function Home() {
   ];
 
 
-  // Sync user credits from local storage / user ID
-  useEffect(() => {
-    const updateCredits = () => {
-      const userCreds = getUserCredits(currentUserId);
-      setCredits(userCreds);
-    };
-    updateCredits();
-    window.addEventListener('kosmos_credits_changed', updateCredits);
-    window.addEventListener('storage', updateCredits);
-    return () => {
-      window.removeEventListener('kosmos_credits_changed', updateCredits);
-      window.removeEventListener('storage', updateCredits);
-    };
-  }, [currentUserId]);
+
 
   // Sync 24-Hour Daily Free Quota with Clerk & LocalStorage
   useEffect(() => {
@@ -270,6 +250,7 @@ export default function Home() {
   // Recover active job after page refresh
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (!isSignedIn) return;
     const activeJobId = localStorage.getItem('kosmos_active_job_id');
     if (!activeJobId) return;
 
@@ -349,7 +330,7 @@ export default function Home() {
     };
     checkActiveJob();
     return () => { isMounted = false; };
-  }, []);
+  }, [isSignedIn]);
 
   // Format seconds to mm:ss
   const formatDuration = (seconds: number) => {
@@ -482,7 +463,7 @@ export default function Home() {
     }
 
     // 1. If user is not logged in: Prompt Google Sign-In when clicking preview or render (bypassed in dev mode)
-    if (!isSignedIn && !isDevelopmentMode()) {
+    if (!isSignedIn) {
       if (openSignIn) {
         openSignIn();
       } else {
@@ -502,7 +483,6 @@ export default function Home() {
       }
     }
 
-    const cost = isPreview ? 0 : (parseInt(fps, 10) >= 120 || resolution.includes('8K') ? 20 : 10);
     const targetDurationSec = isPreview ? 5 : 0;
 
     setIsProcessing(true);
@@ -608,6 +588,7 @@ export default function Home() {
         } catch {
           errMessage = await response.text();
         }
+        if (response.status === 402) setShowRefillModal(true);
         throw new Error(errMessage || `Cloud GPU responded with status ${response.status}`);
       }
 
@@ -640,8 +621,7 @@ export default function Home() {
         localStorage.setItem('kosmos_active_job_id', activeJobId);
       }
 
-      // Reserve credits locally on job start
-      holdUserCredits(cost, activeJobId, currentUserId);
+      void refreshCredits();
 
       // Initial progress update from dispatch
       setProgressPercent(10);
@@ -886,9 +866,7 @@ export default function Home() {
               const updatedQuota = decrementQuota(user?.id, user);
               setQuota(updatedQuota);
 
-              // Commit client-side credits deduction
-              const remainingCreds = commitHeldUserCredits(cost, activeJobId, currentUserId);
-              setCredits(remainingCreds);
+              void refreshCredits();
 
               // Render finished successfully - result displayed in UI without auto-download (Export button handles download)
               const quotaMsg = TEMPORARILY_HIDE_DAILY_LIMIT
@@ -908,8 +886,11 @@ export default function Home() {
 
               // Save to local history
               try {
-                const storedHistory = localStorage.getItem('kosmos_video_history');
-                const historyList: HistoryItem[] = storedHistory ? JSON.parse(storedHistory) : [];
+                const historyKey = `kosmos_video_history_${currentUserId}`;
+                const storedHistory = localStorage.getItem(historyKey) ?? localStorage.getItem('kosmos_video_history');
+                const historyList: HistoryItem[] = storedHistory
+                  ? (JSON.parse(storedHistory) as HistoryItem[]).filter((entry) => entry.userId === currentUserId)
+                  : [];
                 const newHistoryItem: HistoryItem = {
                   id: `kosmos-${Date.now()}`,
                   filename: fileMetadata?.name || 'Enhanced_Clip.mp4',
@@ -931,7 +912,7 @@ export default function Home() {
                   userEmail: user?.primaryEmailAddress?.emailAddress || undefined,
                 };
                 historyList.unshift(newHistoryItem);
-                localStorage.setItem('kosmos_video_history', JSON.stringify(historyList.slice(0, 30)));
+                if (currentUserId) localStorage.setItem(historyKey, JSON.stringify(historyList.slice(0, 30)));
               } catch (histErr) {
                 console.error('Failed saving to history:', histErr);
               }
@@ -967,7 +948,7 @@ export default function Home() {
     } catch (err: any) {
       if (pollInterval) clearInterval(pollInterval);
       if (activeJobId) {
-        releaseHeldUserCredits(cost, activeJobId, currentUserId);
+        void refreshCredits();
         if (typeof window !== 'undefined') {
           localStorage.removeItem('kosmos_active_job_id');
         }
@@ -985,7 +966,7 @@ export default function Home() {
 
   const handleDownloadOutput = async () => {
     // 1. Check Clerk Auth Session (bypassed in development mode)
-    if (!isSignedIn && !isDevelopmentMode()) {
+    if (!isSignedIn) {
       if (openSignIn) {
         openSignIn();
       } else {
@@ -1717,7 +1698,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (!isSignedIn && !isDevelopmentMode()) {
+                    if (!isSignedIn) {
                       openSignIn ? openSignIn() : setShowGoogleAuthModal(true);
                       return;
                     }
@@ -1750,7 +1731,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (!isSignedIn && !isDevelopmentMode()) {
+                    if (!isSignedIn) {
                       openSignIn ? openSignIn() : setShowGoogleAuthModal(true);
                       return;
                     }
@@ -1978,7 +1959,6 @@ export default function Home() {
         isOpen={showRefillModal}
         onClose={() => setShowRefillModal(false)}
         currentCredits={credits}
-        onCreditsUpdated={(c) => setCredits(c)}
       />
 
       {/* Interactive Render Prompt Modal (Shown when Export is clicked before rendering) */}
@@ -2086,8 +2066,7 @@ export default function Home() {
         title="Unlock Full AI Video Processing"
         subtitle={authModalSubtitle}
         onSuccess={() => {
-          const userCreds = getUserCredits(currentUserId);
-          setCredits(userCreds);
+          void refreshCredits();
         }}
       />
 
