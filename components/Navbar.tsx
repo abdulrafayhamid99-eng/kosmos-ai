@@ -77,6 +77,7 @@ export default function Navbar() {
 
   const navLinks = [
     { name: 'Studio', href: '/' },
+    { name: 'Editor', href: '/editor' },
     { name: 'History', href: '/history', icon: Clock },
     { name: 'Pricing', href: '/pricing', icon: CreditCard },
     { name: 'About', href: '/about' },
